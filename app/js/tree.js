@@ -6,7 +6,7 @@ export const SPECIES = {
   15: { name: 'Flor',        emoji: '🌸', light: '#ffd3e8', mid: '#ff8fc7', deep: '#c94b8e', form: 'flower' },
   25: { name: 'Arbolito',    emoji: '🌳', light: '#c8f59a', mid: '#7ed957', deep: '#3d9433' },
   50: { name: 'Roble',       emoji: '🌲', light: '#a5ecbc', mid: '#4dc973', deep: '#1f7a44' },
-  90: { name: 'Gran Sakura', emoji: '🌺', light: '#ffe3b8', mid: '#ffb35c', deep: '#d3751f' },
+  90: { name: 'Gran Sakura', emoji: '🌺', light: '#ffc9e4', mid: '#f272b6', deep: '#ad3d7f' },
 };
 
 const WITHERED = { light: '#d8cbb2', mid: '#a89878', deep: '#6e6047' };
@@ -215,6 +215,29 @@ export function renderTree(svg, p, species, mood = 'grow') {
   }
 
   svg.innerHTML = sceneDefs() + ground() + `<g class="tree-g">${tree}</g>`;
+}
+
+/** Tarjeta de especie: forma final (p=1), sin carita, para el catálogo. */
+export function speciesCard(species) {
+  const sp = species;
+  if (sp.form === 'flower') {
+    return `<svg viewBox="0 0 200 214">
+      <ellipse cx="100" cy="198" rx="34" ry="7" fill="rgba(0,0,0,.14)"/>
+      ${stem(100, 102, 196, 6.5)}
+      ${flowerHead(100, 74, 44, sp)}
+    </svg>`;
+  }
+  const R = 46, groundY = 196, topY = groundY - 86;
+  const canopyCy = topY - R * 0.55;
+  const backSp = { light: sp.mid, mid: sp.deep, deep: mix(sp.deep, '#213620', 0.5) };
+  return `<svg viewBox="0 0 200 214">
+    <ellipse cx="100" cy="${groundY + 2}" rx="46" ry="9" fill="rgba(0,0,0,.14)"/>
+    ${trunk(100, topY + 5, groundY, 15)}
+    ${canopy(100 - R * 0.72, canopyCy + R * 0.38, R * 0.58, backSp)}
+    ${canopy(100 + R * 0.68, canopyCy + R * 0.42, R * 0.52, backSp)}
+    ${canopy(100 + R * 0.3, canopyCy - R * 0.62, R * 0.42, sp)}
+    ${canopy(100, canopyCy, R, sp)}
+  </svg>`;
 }
 
 /** Mini árbol para la grilla del bosque. */

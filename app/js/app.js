@@ -1,6 +1,6 @@
 // ====== KBL App — módulo Foco v1 ======
 import { getSessions, addSession, getActive, setActive, getStats, initSync } from './store.js';
-import { SPECIES, renderTree, miniTree } from './tree.js';
+import { SPECIES, renderTree, miniTree, speciesCard } from './tree.js';
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -130,7 +130,21 @@ $('#btn-giveup').addEventListener('click', giveUp);
 $('#btn-again').addEventListener('click', resetToIdle);
 
 // ---------- Bosque + stats ----------
+function renderEspecies() {
+  const row = document.querySelector('#species-row');
+  if (row.childElementCount) return; // se dibuja una sola vez
+  row.innerHTML = Object.entries(SPECIES)
+    .map(([min, sp]) => `
+      <div class="species-card">
+        ${speciesCard(sp)}
+        <div class="species-name">${sp.name} ${sp.emoji}</div>
+        <div class="species-min">${min} min</div>
+      </div>`)
+    .join('');
+}
+
 function renderBosque() {
+  renderEspecies();
   const sessions = getSessions();
   const stats = getStats();
 
