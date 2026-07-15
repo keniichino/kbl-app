@@ -15,9 +15,6 @@
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
   <link rel="icon" type="image/png" href="icons/icon-192.png">
 
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@500;700;800;900&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="css/app.css">
 </head>
 <body>
@@ -87,10 +84,11 @@
         <div class="stat-card"><div class="stat-val" id="stat-arboles">0</div><div class="stat-key">árboles</div></div>
       </div>
       <div data-showcase id="sakura-showcase">
-        <h2 class="section-title">Tu Sakura 🌸</h2>
+        <h2 class="section-title">Tus islas</h2>
         <div class="viewer360" id="viewer-sakura">
           <div class="viewer-hint">arrastrá para girar</div>
         </div>
+        <div class="viewer-species" id="viewer-species"></div>
       </div>
       <h2 class="section-title">Especies</h2>
       <div class="species-row" id="species-row"></div>
@@ -125,14 +123,28 @@
       <div class="gastos-lista" id="gastos-lista"></div>
     </section>
 
-    <!-- ============ VISTA: NOTAS (próximamente) ============ -->
+    <!-- ============ VISTA: NOTAS ============ -->
     <section id="view-notas" class="view">
-      <div class="soon">
-        <div class="soon-emoji">✍️</div>
-        <h2>Notas</h2>
-        <p>Editor limpio con autosave y sync. Próxima fase.</p>
-      </div>
+      <header class="view-header notas-header">
+        <div>
+          <h1>Notas</h1>
+          <p class="view-sub" id="notas-count"></p>
+        </div>
+        <button class="btn-circular" id="btn-nueva-nota" aria-label="Nueva nota">＋</button>
+      </header>
+      <div class="notas-lista" id="notas-lista"></div>
     </section>
+
+    <!-- Editor de nota (overlay a pantalla completa) -->
+    <div class="nota-editor" id="nota-editor" hidden>
+      <div class="editor-top">
+        <button class="editor-volver" id="editor-volver">‹ Notas</button>
+        <button class="editor-borrar" id="editor-borrar" aria-label="Borrar nota">Borrar</button>
+      </div>
+      <input class="editor-titulo" id="editor-titulo" placeholder="Título" autocomplete="off">
+      <textarea class="editor-contenido" id="editor-contenido" placeholder="Escribí acá…"></textarea>
+      <div class="editor-guardado" id="editor-guardado"></div>
+    </div>
 
     <!-- Tab bar -->
     <nav class="tabbar">

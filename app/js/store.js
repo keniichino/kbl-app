@@ -11,6 +11,7 @@ const KEYS = {
   sessions: 'kbl.foco.sessions',
   active: 'kbl.foco.active',
   gastos: 'kbl.gastos',
+  notas: 'kbl.notas',
 };
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -150,6 +151,24 @@ export function addGasto(gasto) {
 
 export function removeGasto(id) {
   write(KEYS.gastos, getGastos().filter((g) => g.id !== id));
+}
+
+// --- Notas: [{ id, titulo, contenido, updated }] ---
+// Local por ahora; sync con Auth + RLS (misma razón que gastos).
+
+export function getNotas() {
+  return read(KEYS.notas, []);
+}
+
+export function upsertNota(nota) {
+  const all = getNotas().filter((n) => n.id !== nota.id);
+  all.push(nota);
+  write(KEYS.notas, all);
+  return nota;
+}
+
+export function removeNota(id) {
+  write(KEYS.notas, getNotas().filter((n) => n.id !== id));
 }
 
 // --- Estadísticas derivadas ---

@@ -1,6 +1,8 @@
 /* ====== KBL App — estética "mundo de fieltro" vibrante ====== */
 
 :root {
+  /* Tipografía del sistema: SF Pro en Apple, Segoe UI en Windows */
+  --font: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, sans-serif;
   /* Cielo por fase del día (data-phase en <body>); default: atardecer */
   --sky: linear-gradient(180deg, #8fb4e6 0%, #b7bcee 42%, #e7cfe6 72%, #f8e4d9 100%);
   --grass: #6fce55;
@@ -18,6 +20,8 @@
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
+input, textarea { user-select: text; -webkit-user-select: text; }
+
 html, body {
   height: 100%;
   overscroll-behavior: none;
@@ -25,7 +29,7 @@ html, body {
 }
 
 body {
-  font-family: 'Nunito', -apple-system, system-ui, sans-serif;
+  font-family: var(--font);
   color: var(--ink);
   background: var(--sky);
   min-height: 100dvh;
@@ -157,33 +161,57 @@ body[data-phase="noche"] .tabbar { background: linear-gradient(150deg, rgba(255,
 
 .panel-title {
   font-size: 1.35rem;
-  font-weight: 900;
+  font-weight: 800;
   margin-bottom: 16px;
 }
 
-.chips { display: flex; gap: 10px; justify-content: center; margin-bottom: 10px; }
-.chip {
-  font: 800 1.05rem 'Nunito', sans-serif;
-  color: var(--ink-soft);
-  background: rgba(255,255,255,.42);
-  border: 1.5px solid rgba(255,255,255,.7);
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.9);
-  border-radius: 16px;
-  padding: 10px 16px;
-  cursor: pointer;
-  transition: transform .15s, border-color .15s, background .15s;
+/* Control segmentado estilo iOS (duraciones de foco) */
+.chips {
+  display: flex;
+  gap: 3px;
+  margin-bottom: 10px;
+  background: rgba(110, 125, 118, .14);
+  border-radius: 14px;
+  padding: 3px;
 }
-.chip:active { transform: scale(.93); }
+.chip {
+  flex: 1;
+  font: 700 1rem var(--font);
+  color: var(--ink-soft);
+  background: transparent;
+  border: none;
+  border-radius: 11px;
+  padding: 9px 0;
+  cursor: pointer;
+  transition: transform .15s, background .15s, color .15s, box-shadow .15s;
+}
+.chip:active { transform: scale(.95); }
 .chip.selected {
+  background: #fff;
+  color: var(--ink);
+  box-shadow: 0 2px 8px rgba(35, 64, 50, .18);
+}
+
+/* Chips de categoría (Gastos): pills scrolleables */
+.cat-chip {
+  flex: 0 0 auto;
+  padding: 8px 13px;
+  background: rgba(255,255,255,.5);
+  border: 1px solid rgba(255,255,255,.7);
+  font-size: .85rem;
+  border-radius: 14px;
+}
+.cat-chip.selected {
   background: #e9fbe2;
   border-color: var(--grass);
   color: #2e7d32;
+  box-shadow: none;
 }
 
 .species-hint { font-size: .9rem; color: var(--ink-soft); margin-bottom: 18px; min-height: 1.2em; }
 
 .btn-primary {
-  font: 900 1.15rem 'Nunito', sans-serif;
+  font: 800 1.15rem var(--font);
   color: #fff;
   background: linear-gradient(135deg, var(--accent), var(--accent-deep));
   border: none;
@@ -197,7 +225,7 @@ body[data-phase="noche"] .tabbar { background: linear-gradient(150deg, rgba(255,
 .btn-primary:active { transform: scale(.96); }
 
 .btn-ghost {
-  font: 800 .95rem 'Nunito', sans-serif;
+  font: 800 .95rem var(--font);
   color: var(--ink-soft);
   background: rgba(255,255,255,.6);
   border: none;
@@ -225,14 +253,14 @@ body[data-phase="noche"] .tabbar { background: linear-gradient(150deg, rgba(255,
   display: flex; flex-direction: column;
   align-items: center; justify-content: center;
 }
-.time-left { font-size: 2.4rem; font-weight: 900; letter-spacing: 1px; }
+.time-left { font-size: 2.4rem; font-weight: 800; letter-spacing: 1px; }
 .time-label { font-size: .85rem; color: var(--ink-soft); font-weight: 700; }
 
 .done-sub { color: var(--ink-soft); font-weight: 700; margin-bottom: 18px; }
 
 /* ====== Bosque ====== */
 .view-header { padding: max(24px, env(safe-area-inset-top)) 22px 6px; }
-.view-header h1 { font-size: 1.7rem; font-weight: 900; }
+.view-header h1 { font-size: 1.7rem; font-weight: 800; }
 .view-sub { color: var(--ink-soft); font-weight: 700; }
 
 .stats-row {
@@ -251,12 +279,12 @@ body[data-phase="noche"] .tabbar { background: linear-gradient(150deg, rgba(255,
   text-align: center;
   padding: 12px 4px;
 }
-.stat-val { font-size: 1.15rem; font-weight: 900; }
+.stat-val { font-size: 1.15rem; font-weight: 800; }
 .stat-key { font-size: .72rem; font-weight: 800; color: var(--ink-soft); text-transform: uppercase; letter-spacing: .5px; }
 
 .section-title {
   font-size: 1.05rem;
-  font-weight: 900;
+  font-weight: 800;
   color: var(--ink);
   padding: 10px 22px 2px;
 }
@@ -281,7 +309,7 @@ body[data-phase="noche"] .tabbar { background: linear-gradient(150deg, rgba(255,
   padding: 10px 6px 8px;
 }
 .species-card svg { width: 74%; aspect-ratio: 200/214; }
-.species-name { font-size: .8rem; font-weight: 900; }
+.species-name { font-size: .8rem; font-weight: 800; }
 .species-min { font-size: .7rem; font-weight: 800; color: var(--ink-soft); }
 
 /* ====== Visor 360 ====== */
@@ -318,6 +346,148 @@ body[data-phase="noche"] .tabbar { background: linear-gradient(150deg, rgba(255,
 .viewer360.ready .viewer-hint { animation: hintFade 4s forwards; }
 @keyframes hintFade { 0%, 70% { opacity: .8; } 100% { opacity: 0; } }
 
+/* Selector de especie bajo el visor */
+.viewer-species {
+  display: flex;
+  gap: 3px;
+  margin: 8px 16px 0;
+  background: rgba(110, 125, 118, .14);
+  border-radius: 14px;
+  padding: 3px;
+}
+.seg-btn {
+  flex: 1;
+  border: none;
+  background: transparent;
+  font: 700 .8rem var(--font);
+  color: var(--ink-soft);
+  padding: 8px 2px;
+  border-radius: 11px;
+  cursor: pointer;
+  transition: background .15s, color .15s, box-shadow .15s;
+  white-space: nowrap;
+}
+.seg-btn.selected {
+  background: #fff;
+  color: var(--ink);
+  box-shadow: 0 2px 8px rgba(35, 64, 50, .18);
+}
+
+/* ====== Notas ====== */
+.notas-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.btn-circular {
+  width: 42px; height: 42px;
+  border-radius: 50%;
+  border: none;
+  background: linear-gradient(135deg, var(--accent), var(--accent-deep));
+  color: #fff;
+  font: 700 1.4rem/1 var(--font);
+  box-shadow: 0 6px 16px rgba(242,109,61,.35), inset 0 1.5px 0 rgba(255,255,255,.35);
+  cursor: pointer;
+  transition: transform .15s;
+}
+.btn-circular:active { transform: scale(.92); }
+
+.notas-lista {
+  padding: 10px 16px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.nota-card {
+  background: linear-gradient(150deg, rgba(255,255,255,.55), rgba(255,255,255,.25));
+  backdrop-filter: blur(18px) saturate(1.5);
+  -webkit-backdrop-filter: blur(18px) saturate(1.5);
+  border: 1px solid rgba(255,255,255,.65);
+  border-radius: 16px;
+  box-shadow: 0 4px 14px rgba(35,64,50,.08), inset 0 1px 0 rgba(255,255,255,.9);
+  padding: 13px 16px;
+  cursor: pointer;
+  transition: transform .12s;
+}
+.nota-card:active { transform: scale(.98); }
+.nota-titulo {
+  font-weight: 700;
+  font-size: 1rem;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.nota-preview {
+  font-size: .84rem;
+  color: var(--ink-soft);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  margin-top: 2px;
+}
+.nota-fecha { color: var(--accent-deep); font-weight: 700; margin-right: 6px; }
+
+.nota-editor {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: var(--sky);
+  display: flex;
+  flex-direction: column;
+  max-width: 520px;
+  margin: 0 auto;
+  padding: max(14px, env(safe-area-inset-top)) 18px calc(14px + env(safe-area-inset-bottom));
+  animation: viewIn .25s ease-out;
+}
+.editor-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+.editor-volver {
+  border: none;
+  background: none;
+  font: 700 1.05rem var(--font);
+  color: var(--accent-deep);
+  cursor: pointer;
+  padding: 8px 8px 8px 0;
+}
+.editor-borrar {
+  border: none;
+  background: rgba(255,255,255,.55);
+  border-radius: 12px;
+  padding: 8px 14px;
+  font: 700 .85rem var(--font);
+  color: #c0392b;
+  cursor: pointer;
+}
+.editor-titulo {
+  border: none;
+  background: transparent;
+  font: 800 1.55rem var(--font);
+  color: var(--ink);
+  outline: none;
+  padding: 8px 2px 4px;
+}
+.editor-titulo::placeholder, .editor-contenido::placeholder { color: rgba(76,107,88,.5); }
+.editor-contenido {
+  flex: 1;
+  border: none;
+  background: transparent;
+  resize: none;
+  outline: none;
+  font: 400 1.05rem/1.55 var(--font);
+  color: var(--ink);
+  padding: 4px 2px;
+  user-select: text;
+  -webkit-user-select: text;
+}
+.editor-titulo { user-select: text; -webkit-user-select: text; }
+.editor-guardado {
+  text-align: center;
+  font-size: .75rem;
+  font-weight: 700;
+  color: var(--ink-soft);
+  height: 1.1em;
+}
+
 .forest-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -352,7 +522,7 @@ body[data-phase="noche"] .tabbar { background: linear-gradient(150deg, rgba(255,
   border-radius: var(--radius-xl);
   box-shadow: var(--shadow-soft), inset 0 1px 0 rgba(255,255,255,.9);
 }
-.gasto-total { font-size: 2.2rem; font-weight: 900; letter-spacing: -0.5px; }
+.gasto-total { font-size: 2.2rem; font-weight: 800; letter-spacing: -0.5px; }
 .gasto-total-sub { font-size: .8rem; font-weight: 800; color: var(--ink-soft); text-transform: uppercase; letter-spacing: .5px; }
 .gasto-cats-resumen { display: flex; gap: 8px; justify-content: center; margin-top: 10px; flex-wrap: wrap; }
 .cat-mini {
@@ -375,7 +545,7 @@ body[data-phase="noche"] .tabbar { background: linear-gradient(150deg, rgba(255,
   display: flex; flex-direction: column; gap: 10px;
 }
 .gasto-form input {
-  font: 800 1.05rem 'Nunito', sans-serif;
+  font: 800 1.05rem var(--font);
   color: var(--ink);
   background: rgba(255,255,255,.6);
   border: 1.5px solid rgba(255,255,255,.8);
@@ -390,7 +560,7 @@ body[data-phase="noche"] .tabbar { background: linear-gradient(150deg, rgba(255,
 
 .gastos-lista { padding: 4px 16px 24px; }
 .gasto-dia {
-  font-size: .75rem; font-weight: 900; color: var(--ink-soft);
+  font-size: .75rem; font-weight: 800; color: var(--ink-soft);
   text-transform: uppercase; letter-spacing: .8px;
   margin: 14px 6px 6px;
 }
@@ -405,7 +575,7 @@ body[data-phase="noche"] .tabbar { background: linear-gradient(150deg, rgba(255,
 }
 .gasto-emoji { font-size: 1.2rem; }
 .gasto-desc { flex: 1; font-weight: 800; font-size: .95rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.gasto-monto { font-weight: 900; font-size: .95rem; }
+.gasto-monto { font-weight: 800; font-size: .95rem; }
 .gasto-borrar {
   border: none; background: rgba(0,0,0,.06);
   width: 24px; height: 24px; border-radius: 50%;
@@ -425,7 +595,7 @@ body[data-phase="noche"] .tabbar { background: linear-gradient(150deg, rgba(255,
   font-weight: 700;
 }
 .soon-emoji { font-size: 3.4rem; }
-.soon h2 { color: var(--ink); font-weight: 900; }
+.soon h2 { color: var(--ink); font-weight: 800; }
 
 /* ====== Tab bar ====== */
 .tabbar {
@@ -451,7 +621,7 @@ body[data-phase="noche"] .tabbar { background: linear-gradient(150deg, rgba(255,
   display: flex; flex-direction: column;
   align-items: center; justify-content: center;
   gap: 2px;
-  font: 800 .7rem 'Nunito', sans-serif;
+  font: 800 .7rem var(--font);
   color: #9ab0a2;
   transition: color .2s, transform .15s;
 }

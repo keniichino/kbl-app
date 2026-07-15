@@ -3,6 +3,7 @@ import { getSessions, addSession, getActive, setActive, getStats, initSync } fro
 import { SPECIES, renderTree, miniTree, speciesCard, dayPhase } from './tree.js';
 import { initGastos, renderGastos } from './gastos.js';
 import { initViewer360 } from './viewer360.js';
+import { initNotas, renderNotas } from './notas.js';
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -34,6 +35,7 @@ document.querySelectorAll('.tab').forEach(tab => {
       v.classList.toggle('active', v.id === 'view-' + tab.dataset.view));
     if (tab.dataset.view === 'bosque') renderBosque();
     if (tab.dataset.view === 'gastos') renderGastos();
+    if (tab.dataset.view === 'notas') renderNotas();
   });
 });
 
@@ -219,6 +221,52 @@ document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible' && getActive()) requestWakeLock();
 });
 
+// ---------- Islas 360: visor con selector de especies ----------
+const ISLAS = [
+  { key: 'sakura',   nombre: 'Sakura',   emoji: '🌸' },
+  { key: 'flor',     nombre: 'Flor',     emoji: '🌷' },
+  { key: 'arbolito', nombre: 'Arbolito', emoji: '🌳' },
+  { key: 'roble',    nombre: 'Roble',    emoji: '🌲' },
+];
+
+function initIslas() {
+  const viewer = initViewer360($('#viewer-sakura'), { frames: 36 });
+  const cont = $('#viewer-species');
+
+  cont.innerHTML = ISLAS
+    .map((s) => `<button class="seg-btn" data-isla="${s.key}">${s.emoji} ${s.nombre}</button>`)
+    .join('');
+
+  const cargar = (key, btn) => {
+    cont.querySelectorAll('.seg-btn').forEach((b) => b.classList.toggle('selected', b === btn));
+    viewer.setSrc(
+      (i) => `assets/360/${key}/${String(i).padStart(2, '0')}.webp`,
+      () => { btn.hidden = true; } // especie sin assets: se esconde su botón
+    );
+  };
+
+  cont.addEventListener('click', (e) => {
+    const btn = e.target.closest('.seg-btn');
+    if (btn) cargar(btn.dataset.isla, btn);
+  });
+
+  // arranque: sakura (si falta, se oculta todo el showcase)
+  const primero = cont.querySelector('.seg-btn');
+  cont.querySelectorAll('.seg-btn').forEach((b) => {
+    if (b !== primero) {
+      // sondeo silencioso: si la especie no tiene frame 0, ocultar su botón
+      const probe = new Image();
+      probe.src = `assets/360/${b.dataset.isla}/00.webp`;
+      probe.onerror = () => { b.hidden = true; };
+    }
+  });
+  primero.classList.add('selected');
+  viewer.setSrc(
+    (i) => `assets/360/sakura/${String(i).padStart(2, '0')}.webp`,
+    () => $('#sakura-showcase').setAttribute('hidden', '')
+  );
+}
+
 // ---------- Sync: reaccionar a cambios del otro dispositivo ----------
 function onRemoteChange(kind) {
   if (kind === 'active') {
@@ -253,10 +301,8 @@ setInterval(() => {
 async function boot() {
   applyPhase();
   initGastos();
-  initViewer360(document.querySelector('#viewer-sakura'), {
-    frames: 36,
-    src: (i) => `assets/sakura360/sakura_${String(i).padStart(2, '0')}.webp`,
-  });
+  initNotas();
+  initIslas();
   resetToIdle(); // render inmediato; el sync ajusta el estado si hace falta
   await initSync(onRemoteChange);
   const active = getActive();
