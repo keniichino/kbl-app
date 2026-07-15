@@ -60,6 +60,7 @@ function startSession() {
   setActive(session);
   requestWakeLock();
   show('running');
+  setPetals([SPECIES[selectedMin].light + 'dd', '#ffffffbb']);
   tick();
   tickInterval = setInterval(tick, 1000);
 }
@@ -120,6 +121,7 @@ function giveUp() {
 function resetToIdle() {
   renderTree(svg, 0, SPECIES[selectedMin], 'seed');
   show('idle');
+  setPetals(IDLE_PETALS);
   updateSpeciesHint();
 }
 
@@ -153,6 +155,23 @@ function renderBosque() {
       </div>`)
     .join('');
 }
+
+// ---------- Pétalos flotando en la escena ----------
+function setPetals(colors) {
+  const layer = $('#ambient');
+  layer.innerHTML = '';
+  for (let i = 0; i < 9; i++) {
+    const p = document.createElement('div');
+    p.className = 'petal';
+    p.style.left = 6 + Math.random() * 88 + '%';
+    p.style.background = colors[i % colors.length];
+    p.style.animationDuration = 9 + Math.random() * 8 + 's';
+    p.style.animationDelay = -Math.random() * 14 + 's';
+    layer.appendChild(p);
+  }
+}
+
+const IDLE_PETALS = ['#ffffffcc', '#ffd9e8cc', '#ffe9a8cc'];
 
 // ---------- Confetti ----------
 function confetti() {

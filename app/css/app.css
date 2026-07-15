@@ -1,8 +1,7 @@
 /* ====== KBL App — estética "mundo de fieltro" vibrante ====== */
 
 :root {
-  --sky-top: #7fd4ff;
-  --sky-bottom: #d8f4ff;
+  --sky: linear-gradient(180deg, #8fb4e6 0%, #b7bcee 42%, #e7cfe6 72%, #f8e4d9 100%);
   --grass: #6fce55;
   --grass-deep: #4caf3f;
   --ink: #234032;
@@ -27,7 +26,7 @@ html, body {
 body {
   font-family: 'Nunito', -apple-system, system-ui, sans-serif;
   color: var(--ink);
-  background: linear-gradient(180deg, var(--sky-top) 0%, var(--sky-bottom) 100%);
+  background: var(--sky);
   min-height: 100dvh;
   user-select: none;
   -webkit-user-select: none;
@@ -63,23 +62,44 @@ body {
   height: 100%;
 }
 
-.sun {
+.ambient {
   position: absolute;
-  top: 36px; right: 32px;
-  width: 74px; height: 74px;
-  border-radius: 50%;
-  background: radial-gradient(circle at 35% 35%, #fff7c9, #ffde59 70%);
-  box-shadow: 0 0 60px 18px rgba(255, 222, 89, 0.55);
-  animation: sunPulse 5s ease-in-out infinite;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
 }
-@keyframes sunPulse { 50% { box-shadow: 0 0 80px 26px rgba(255,222,89,.7); } }
+
+/* Vignette sutil para profundidad */
+.scene::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(ellipse at 50% 42%, transparent 55%, rgba(72, 64, 130, .14) 100%);
+}
+
+/* Pétalos flotando */
+.petal {
+  position: absolute;
+  top: -24px;
+  width: 9px; height: 9px;
+  border-radius: 65% 4px 65% 4px;
+  opacity: 0;
+  animation: petalFall linear infinite;
+  pointer-events: none;
+}
+@keyframes petalFall {
+  0%   { transform: translate(0, -24px) rotate(0deg); opacity: 0; }
+  8%   { opacity: .85; }
+  100% { transform: translate(-70px, 540px) rotate(560deg); opacity: .15; }
+}
 
 .cloud {
   position: absolute;
   width: 120px; height: 44px;
   background: #fff;
   border-radius: 44px;
-  opacity: .95;
+  opacity: .75;
   filter: drop-shadow(0 8px 12px rgba(120,170,210,.25));
   animation: drift linear infinite;
 }
@@ -323,8 +343,8 @@ body {
     padding-bottom: 0;
     border-radius: 40px;
     overflow: hidden auto;
-    box-shadow: 0 30px 80px rgba(35,64,50,.25);
-    background: linear-gradient(180deg, var(--sky-top), var(--sky-bottom));
+    box-shadow: 0 30px 80px rgba(50, 45, 90, .35);
+    background: var(--sky);
     position: relative;
     scrollbar-width: none;
   }
