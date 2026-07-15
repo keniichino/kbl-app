@@ -1,4 +1,7 @@
-﻿# Sistema
+﻿# Referencias con licencia (no redistribuir en repo público)
+IMG/
+
+# Sistema
 Thumbs.db
 desktop.ini
 .DS_Store
@@ -6,3 +9,7 @@ desktop.ini
 *.gdoc
 *.gsheet
 ~$*
+
+# Addon de terceros descargado (no redistribuir hasta decidir)
+blender/addon.py
+blender/*.png

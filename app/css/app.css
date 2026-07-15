@@ -1,6 +1,7 @@
 /* ====== KBL App — estética "mundo de fieltro" vibrante ====== */
 
 :root {
+  /* Cielo por fase del día (data-phase en <body>); default: atardecer */
   --sky: linear-gradient(180deg, #8fb4e6 0%, #b7bcee 42%, #e7cfe6 72%, #f8e4d9 100%);
   --grass: #6fce55;
   --grass-deep: #4caf3f;
@@ -31,6 +32,13 @@ body {
   user-select: none;
   -webkit-user-select: none;
 }
+
+body[data-phase="amanecer"] { --sky: linear-gradient(180deg, #93b2dd 0%, #d9b3c4 48%, #ffd9b8 82%, #ffe9d2 100%); }
+body[data-phase="dia"]      { --sky: linear-gradient(180deg, #7fbdf0 0%, #a8d6f5 55%, #dff0fb 100%); }
+body[data-phase="noche"]    { --sky: linear-gradient(180deg, #1c2547 0%, #2e3a6e 45%, #55497f 78%, #746092 100%); }
+body[data-phase="noche"] .cloud { opacity: .22; filter: brightness(.75); }
+body[data-phase="noche"] .panel,
+body[data-phase="noche"] .tabbar { background: linear-gradient(150deg, rgba(255,255,255,.72) 0%, rgba(255,255,255,.45) 60%, rgba(255,255,255,.6) 100%); }
 
 #app {
   max-width: 520px;

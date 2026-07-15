@@ -1,6 +1,6 @@
 // ====== KBL App — módulo Foco v1 ======
 import { getSessions, addSession, getActive, setActive, getStats, initSync } from './store.js';
-import { SPECIES, renderTree, miniTree, speciesCard } from './tree.js';
+import { SPECIES, renderTree, miniTree, speciesCard, dayPhase } from './tree.js';
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -238,7 +238,17 @@ function onRemoteChange(kind) {
 }
 
 // ---------- Arranque: retomar sesión si existía ----------
+// Fase del día: se aplica al arrancar y se refresca cada 5 minutos
+function applyPhase() {
+  document.body.dataset.phase = dayPhase();
+}
+setInterval(() => {
+  applyPhase();
+  if (!tickInterval && !el.idle.hidden) renderTree(svg, 0, SPECIES[selectedMin], 'seed');
+}, 5 * 60 * 1000);
+
 async function boot() {
+  applyPhase();
   resetToIdle(); // render inmediato; el sync ajusta el estado si hace falta
   await initSync(onRemoteChange);
   const active = getActive();

@@ -111,55 +111,110 @@ function face(cx, cy, scale, mood) {
     ${mouth}`;
 }
 
-// Escena "dreamy": luna gigante, colinas con bruma atmosférica y pasto texturado
-function ground() {
+// ====== Ciclo día/noche ======
+export function dayPhase(h = new Date().getHours()) {
+  if (h >= 6 && h < 10) return 'amanecer';
+  if (h >= 10 && h < 17) return 'dia';
+  if (h >= 17 && h < 20) return 'atardecer';
+  return 'noche';
+}
+
+// Paleta del terreno según la fase del día
+const PHASES = {
+  amanecer:  { far: '#d8aebe', mid: '#b3a7c9', backHill: '#96d97e', grass: ['#a8e58c', '#6cc464', '#46a251'], blades: ['#43a04b', '#5fbf5c'] },
+  dia:       { far: '#a9c3e3', mid: '#93c0b4', backHill: '#93dd7b', grass: ['#a5e88b', '#65c75e', '#3fa04a'], blades: ['#3e9948', '#57b855'] },
+  atardecer: { far: '#aab6dd', mid: '#8fb2b4', backHill: '#8fd67a', grass: ['#9fe08a', '#63c05e', '#3f9e4a'], blades: ['#3e9948', '#57b855'] },
+  noche:     { far: '#3d4a7a', mid: '#37587a', backHill: '#356e58', grass: ['#3f7d62', '#2f6153', '#1f4a44'], blades: ['#2b5c4e', '#3a7a63'] },
+};
+
+// Sol, luna o estrellas según la hora
+function celestial(phase) {
+  if (phase === 'noche') {
+    let stars = '';
+    for (let i = 0; i < 26; i++) {
+      const x = 8 + ((i * 53) % 384);
+      const y = 12 + ((i * 89) % 200);
+      stars += `<circle cx="${x}" cy="${y}" r="${i % 4 === 0 ? 1.8 : 1.1}" fill="#fff" opacity="${0.4 + (i % 5) * 0.12}"/>`;
+    }
+    return `${stars}
+      <circle cx="200" cy="235" r="132" fill="#f6f2ea" opacity=".18"/>
+      <circle cx="200" cy="235" r="118" fill="url(#gMoon)" opacity=".95"/>
+      <ellipse cx="165" cy="200" rx="20" ry="15" fill="#dde2ec" opacity=".55"/>
+      <ellipse cx="238" cy="262" rx="26" ry="19" fill="#dde2ec" opacity=".45"/>
+      <ellipse cx="222" cy="182" rx="12" ry="9" fill="#dde2ec" opacity=".5"/>
+      <ellipse cx="158" cy="278" rx="11" ry="8" fill="#dde2ec" opacity=".4"/>`;
+  }
+  if (phase === 'atardecer') {
+    return `
+      <circle cx="200" cy="280" r="122" fill="#ff9d5c" opacity=".22"/>
+      <circle cx="200" cy="280" r="104" fill="url(#gSunset)" opacity=".95"/>`;
+  }
+  if (phase === 'amanecer') {
+    return `
+      <circle cx="118" cy="262" r="76" fill="#ffd9a0" opacity=".3"/>
+      <circle cx="118" cy="262" r="58" fill="url(#gSun)" opacity=".95"/>`;
+  }
+  return `
+    <circle cx="298" cy="118" r="62" fill="#fff3b8" opacity=".35"/>
+    <circle cx="298" cy="118" r="44" fill="url(#gSun)"/>`;
+}
+
+// Escena "dreamy": cuerpo celeste, colinas con bruma atmosférica y pasto texturado
+function ground(phase) {
+  const P = PHASES[phase];
+  const night = phase === 'noche';
   // Pasto: hebras y flores con posiciones pseudo-aleatorias deterministas
   let grass = '';
   for (let i = 0; i < 64; i++) {
     const x = 14 + ((i * 61) % 372);
     const y = 396 + ((i * 37) % 30);
     const tilt = ((i % 5) - 2) * 2.2;
-    const tone = i % 3 === 0 ? '#3e9948' : '#57b855';
+    const tone = P.blades[i % 3 === 0 ? 0 : 1];
     grass += `<path d="M ${x} ${y} q ${tilt} -7 ${tilt * 1.6} -11" stroke="${tone}" stroke-width="1.6" fill="none" stroke-linecap="round"/>`;
     if (i % 8 === 0) {
       const fc = ['#ffffff', '#ffd9e8', '#ffe9a8'][(i / 8) % 3];
-      grass += `<circle cx="${x + 4}" cy="${y - 3}" r="2.4" fill="${fc}"/><circle cx="${x + 4}" cy="${y - 3}" r="1" fill="#f2bf4e"/>`;
+      grass += `<circle cx="${x + 4}" cy="${y - 3}" r="2.4" fill="${fc}" opacity="${night ? .75 : 1}"/><circle cx="${x + 4}" cy="${y - 3}" r="1" fill="#f2bf4e"/>`;
     }
   }
   return `
-    <!-- luna gigante con halo -->
-    <circle cx="200" cy="235" r="132" fill="#f6f2ea" opacity=".18"/>
-    <circle cx="200" cy="235" r="118" fill="url(#gMoon)" opacity=".95"/>
-    <ellipse cx="165" cy="200" rx="20" ry="15" fill="#dde2ec" opacity=".55"/>
-    <ellipse cx="238" cy="262" rx="26" ry="19" fill="#dde2ec" opacity=".45"/>
-    <ellipse cx="222" cy="182" rx="12" ry="9" fill="#dde2ec" opacity=".5"/>
-    <ellipse cx="158" cy="278" rx="11" ry="8" fill="#dde2ec" opacity=".4"/>
+    ${celestial(phase)}
     <!-- colinas lejanas (bruma) -->
-    <path d="M 0 338 Q 70 296 160 330 T 400 322 L 400 430 L 0 430 Z" fill="#aab6dd" opacity=".8"/>
-    <path d="M 0 352 Q 120 310 250 346 T 400 340 L 400 430 L 0 430 Z" fill="#8fb2b4" opacity=".85"/>
+    <path d="M 0 338 Q 70 296 160 330 T 400 322 L 400 430 L 0 430 Z" fill="${P.far}" opacity=".8"/>
+    <path d="M 0 352 Q 120 310 250 346 T 400 340 L 400 430 L 0 430 Z" fill="${P.mid}" opacity=".85"/>
     <!-- loma principal en dos planos -->
-    <ellipse cx="330" cy="478" rx="330" ry="152" fill="#8fd67a"/>
+    <ellipse cx="330" cy="478" rx="330" ry="152" fill="${P.backHill}"/>
     <ellipse cx="200" cy="492" rx="342" ry="160" fill="url(#gGrass)"/>
     ${grass}
     <!-- arbustos y roca low poly -->
-    <polygon points="72,398 88,370 104,398" fill="#4aa851"/>
-    <polygon points="88,398 100,378 112,398" fill="#398544"/>
-    <polygon points="308,408 320,386 334,408" fill="#4aa851"/>
-    <polygon points="330,438 344,422 362,430 356,446 336,448" fill="#c9cfdc"/>
-    <polygon points="330,438 344,422 348,444" fill="#eceff5"/>`;
+    <polygon points="72,398 88,370 104,398" fill="${night ? '#2f6a54' : '#4aa851'}"/>
+    <polygon points="88,398 100,378 112,398" fill="${night ? '#245546' : '#398544'}"/>
+    <polygon points="308,408 320,386 334,408" fill="${night ? '#2f6a54' : '#4aa851'}"/>
+    <polygon points="330,438 344,422 362,430 356,446 336,448" fill="${night ? '#8b93ab' : '#c9cfdc'}"/>
+    <polygon points="330,438 344,422 348,444" fill="${night ? '#b8bfd2' : '#eceff5'}"/>`;
 }
 
-function sceneDefs() {
+function sceneDefs(phase) {
+  const g = PHASES[phase].grass;
   return `<defs>
     <radialGradient id="gMoon" cx="38%" cy="34%" r="85%">
       <stop offset="0%" stop-color="#fdfaf3"/>
       <stop offset="65%" stop-color="#ece9e4"/>
       <stop offset="100%" stop-color="#cfd6e6"/>
     </radialGradient>
+    <radialGradient id="gSun" cx="42%" cy="38%" r="80%">
+      <stop offset="0%" stop-color="#fff8d6"/>
+      <stop offset="70%" stop-color="#ffe07a"/>
+      <stop offset="100%" stop-color="#ffc44d"/>
+    </radialGradient>
+    <radialGradient id="gSunset" cx="50%" cy="42%" r="80%">
+      <stop offset="0%" stop-color="#ffe3b0"/>
+      <stop offset="60%" stop-color="#ffb066"/>
+      <stop offset="100%" stop-color="#f27d4d"/>
+    </radialGradient>
     <radialGradient id="gGrass" cx="50%" cy="12%" r="95%">
-      <stop offset="0%" stop-color="#9fe08a"/>
-      <stop offset="55%" stop-color="#63c05e"/>
-      <stop offset="100%" stop-color="#3f9e4a"/>
+      <stop offset="0%" stop-color="${g[0]}"/>
+      <stop offset="55%" stop-color="${g[1]}"/>
+      <stop offset="100%" stop-color="${g[2]}"/>
     </radialGradient>
   </defs>`;
 }
@@ -214,7 +269,8 @@ export function renderTree(svg, p, species, mood = 'grow') {
       ${p > 0.3 ? face(200, canopyCy + R * 0.28, grow, mood === 'grow' ? 'smile' : mood) : ''}`;
   }
 
-  svg.innerHTML = sceneDefs() + ground() + `<g class="tree-g">${tree}</g>`;
+  const phase = dayPhase();
+  svg.innerHTML = sceneDefs(phase) + ground(phase) + `<g class="tree-g">${tree}</g>`;
 }
 
 /** Tarjeta de especie: forma final (p=1), sin carita, para el catálogo. */
