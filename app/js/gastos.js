@@ -114,6 +114,15 @@ export function initGastos() {
     document.querySelectorAll('.cat-chip').forEach((c) => c.classList.toggle('selected', c === chip));
   });
 
+  // Separador de miles en vivo: 1234567 → 1.234.567 (coma para decimales)
+  $('#gasto-monto').addEventListener('input', (e) => {
+    let v = e.target.value.replace(/[^\d,]/g, '');
+    const [ent, ...resto] = v.split(',');
+    const entFmt = ent.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+    const dec = resto.length ? ',' + resto.join('').slice(0, 2) : '';
+    e.target.value = entFmt + dec;
+  });
+
   $('#btn-gasto').addEventListener('click', agregar);
   $('#gasto-desc').addEventListener('keydown', (e) => { if (e.key === 'Enter') agregar(); });
   $('#gasto-monto').addEventListener('keydown', (e) => { if (e.key === 'Enter') agregar(); });
