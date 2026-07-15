@@ -3,7 +3,7 @@
 // que es lo que da la sensación 3D. El parámetro p (0..1) es el progreso.
 
 export const SPECIES = {
-  15: { name: 'Flor',        emoji: '🌸', light: '#ffd3e8', mid: '#ff8fc7', deep: '#c94b8e' },
+  15: { name: 'Flor',        emoji: '🌸', light: '#ffd3e8', mid: '#ff8fc7', deep: '#c94b8e', form: 'flower' },
   25: { name: 'Arbolito',    emoji: '🌳', light: '#c8f59a', mid: '#7ed957', deep: '#3d9433' },
   50: { name: 'Roble',       emoji: '🌲', light: '#a5ecbc', mid: '#4dc973', deep: '#1f7a44' },
   90: { name: 'Gran Sakura', emoji: '🌺', light: '#ffe3b8', mid: '#ffb35c', deep: '#d3751f' },
@@ -44,6 +44,41 @@ function canopy(cx, cy, R, sp) {
   out += `<polygon points="${cx},${cy} ${pts[7][0]},${pts[7][1]} ${pts[8][0]},${pts[8][1]}"
                    fill="rgba(255,255,255,.35)"/>`;
   return out;
+}
+
+// Flor low poly: pétalos radiales (dos facetas cada uno) + centro hexagonal
+function flowerHead(cx, cy, R, sp) {
+  let out = '';
+  const N = 8;
+  for (let i = 0; i < N; i++) {
+    const a = (i / N) * 2 * Math.PI - Math.PI / 2;
+    const ix = cx + Math.cos(a) * R * 0.22, iy = cy + Math.sin(a) * R * 0.22;
+    const tx = cx + Math.cos(a) * R,        ty = cy + Math.sin(a) * R;
+    const la = a - 0.34, ra = a + 0.34;
+    const lx = cx + Math.cos(la) * R * 0.64, ly = cy + Math.sin(la) * R * 0.64;
+    const rx = cx + Math.cos(ra) * R * 0.64, ry = cy + Math.sin(ra) * R * 0.64;
+    out += `<polygon points="${ix.toFixed(1)},${iy.toFixed(1)} ${lx.toFixed(1)},${ly.toFixed(1)} ${tx.toFixed(1)},${ty.toFixed(1)}" fill="${sp.light}"/>
+            <polygon points="${ix.toFixed(1)},${iy.toFixed(1)} ${tx.toFixed(1)},${ty.toFixed(1)} ${rx.toFixed(1)},${ry.toFixed(1)}" fill="${sp.mid}"/>`;
+  }
+  // Centro: hexágono facetado amarillo
+  const C = R * 0.32;
+  const tones = ['#ffe49a', '#ffd76e', '#f2bf4e'];
+  for (let i = 0; i < 6; i++) {
+    const a1 = (i / 6) * 2 * Math.PI, a2 = ((i + 1) / 6) * 2 * Math.PI;
+    out += `<polygon points="${cx},${cy} ${(cx + Math.cos(a1) * C).toFixed(1)},${(cy + Math.sin(a1) * C).toFixed(1)} ${(cx + Math.cos(a2) * C).toFixed(1)},${(cy + Math.sin(a2) * C).toFixed(1)}" fill="${tones[i % 3]}"/>`;
+  }
+  return out;
+}
+
+// Tallo con hojas (para la flor)
+function stem(cx, topY, groundY, w) {
+  const leafY1 = groundY - (groundY - topY) * 0.42;
+  const leafY2 = groundY - (groundY - topY) * 0.62;
+  return `
+    <polygon points="${cx - w},${groundY} ${cx - w * 0.35},${topY} ${cx},${topY} ${cx},${groundY}" fill="#5db14a"/>
+    <polygon points="${cx},${groundY} ${cx},${topY} ${cx + w * 0.35},${topY} ${cx + w},${groundY}" fill="#3d8f37"/>
+    <polygon points="${cx},${leafY1} ${cx - w * 2.6},${leafY1 - w * 1.4} ${cx - w * 4.6},${leafY1 - w * 0.6} ${cx - w * 2.4},${leafY1 + w * 0.8}" fill="#5db14a"/>
+    <polygon points="${cx},${leafY2} ${cx + w * 2.6},${leafY2 - w * 1.6} ${cx + w * 4.4},${leafY2 - w * 0.4} ${cx + w * 2.2},${leafY2 + w * 0.8}" fill="#3d8f37"/>`;
 }
 
 // Tronco facetado: cara izquierda iluminada, derecha en sombra
@@ -109,6 +144,19 @@ export function renderTree(svg, p, species, mood = 'grow') {
       <path d="M 200 ${groundY} q -3 -18 0 -26 q 3 8 0 26" stroke="#5da448" stroke-width="5" fill="none" stroke-linecap="round"/>
       <polygon points="200,${groundY - 24} 184,${groundY - 32} 196,${groundY - 40}" fill="${sp.mid}"/>
       <polygon points="200,${groundY - 24} 216,${groundY - 32} 204,${groundY - 40}" fill="${sp.deep}"/>`;
+  } else if (species.form === 'flower') {
+    const grow = 0.25 + 0.75 * Math.min(p, 1);
+    const stemH = 118 * grow;
+    const stemW = 7 * grow;
+    const topY = groundY - stemH;
+    const R = 52 * grow;
+    const headCy = topY - R * 0.6;
+
+    tree = `
+      <ellipse cx="200" cy="${groundY + 2}" rx="${40 * grow}" ry="${9 * grow}" fill="rgba(0,0,0,.15)"/>
+      ${stem(200, topY, groundY, stemW)}
+      ${flowerHead(200, headCy, R, sp)}
+      ${p > 0.3 ? face(200, headCy, grow * 0.55, mood === 'grow' ? 'smile' : mood) : ''}`;
   } else {
     const grow = 0.25 + 0.75 * Math.min(p, 1);
     const trunkH = 110 * grow;
@@ -130,6 +178,14 @@ export function renderTree(svg, p, species, mood = 'grow') {
 /** Mini árbol para la grilla del bosque. */
 export function miniTree(species, completed) {
   const sp = completed ? species : { ...species, ...WITHERED };
+  if (species.form === 'flower') {
+    return `<svg viewBox="0 0 120 130">
+      <ellipse cx="60" cy="118" rx="22" ry="5" fill="rgba(0,0,0,.13)"/>
+      ${stem(60, 62, 116, 4.5)}
+      ${flowerHead(60, 44, 30, sp)}
+      ${face(60, 44, 0.32, completed ? 'smile' : 'dead')}
+    </svg>`;
+  }
   return `<svg viewBox="0 0 120 130">
     <ellipse cx="60" cy="118" rx="30" ry="7" fill="rgba(0,0,0,.13)"/>
     ${trunk(60, 74, 116, 11)}
