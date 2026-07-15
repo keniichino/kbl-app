@@ -1,10 +1,14 @@
 # Tareas de Keni — KBL App
 
 ## Ahora
-- [ ] **Instalar Blender** desde https://www.blender.org/download/ (versión 4.x, gratis, ~350 MB). Instalación por defecto, no hace falta configurar nada — del resto (addon MCP + conexión) me encargo yo la próxima sesión.
+- [x] ~~Instalar Blender~~ (5.2 instalado ✅)
+- [x] ~~Instalar la app en el iPhone~~ ✅
+- [x] ~~Addon Blender MCP~~ (instalado y aprobado ✅)
 - [ ] **Revocar el token de Supabase** que pegaste en el chat: https://supabase.com/dashboard/account/tokens → borrar el token. La app no lo usa; es solo higiene de seguridad.
-- [ ] **Instalar la app en el iPhone**: Safari → https://keniichino.github.io/kbl-app/ → Compartir → "Agregar a pantalla de inicio".
-- [ ] **Instalar la app en la PC**: Chrome/Edge → misma URL → ícono de instalar en la barra de direcciones.
+- [ ] **Instalar la app en la PC**: Chrome/Edge → https://keniichino.github.io/kbl-app/ → ícono de instalar en la barra de direcciones.
+- [ ] **Para el modo interactivo de Blender**: con Blender abierto, apretá N en el viewport 3D → pestaña "BlenderMCP" → botón "Connect to Claude". Eso se hace cada vez que quieras que Claude toque tu Blender en vivo (los renders por script no lo necesitan).
+- [ ] **Loguearte en BlenderKit**: abrí Blender → panel N → pestaña BlenderKit → "Login". Cuenta gratis en blenderkit.com si no tenés. Sin login no se pueden descargar assets.
+- [ ] **Recomendado**: borrá o poné en cuarentena la carpeta `C:\Back Up\...\add ons y apss craked` — los activadores craqueados son el vector de malware #1, y esta máquina tiene credenciales del trabajo y personales. BlenderKit era gratis (tu zip resultó ser el oficial); lo demás de esa carpeta, evaluá si vale el riesgo.
 
 ## Cuando puedas
 - [ ] **Configurar el Modo Concentración en iOS** (el "bloqueo" de redes): Ajustes → Concentración → "+" → crear modo "Foco" → en Apps elegí "Silenciar" y agregá Instagram/TikTok/etc. Después, cuando plantes un árbol, activás ese modo desde el Centro de Control (un toque).

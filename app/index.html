@@ -96,13 +96,27 @@
       </div>
     </section>
 
-    <!-- ============ VISTA: GASTOS (próximamente) ============ -->
+    <!-- ============ VISTA: GASTOS ============ -->
     <section id="view-gastos" class="view">
-      <div class="soon">
-        <div class="soon-emoji">💸</div>
-        <h2>Gastos</h2>
-        <p>Carga en 5 segundos, categorización automática con IA y resumen mensual. Próxima fase.</p>
+      <header class="view-header">
+        <h1>Gastos</h1>
+        <p class="view-sub" id="gastos-mes-label"></p>
+      </header>
+
+      <div class="gasto-hero">
+        <div class="gasto-total" id="gasto-total">$ 0</div>
+        <div class="gasto-total-sub">este mes</div>
+        <div class="gasto-cats-resumen" id="gasto-cats-resumen"></div>
       </div>
+
+      <div class="gasto-form">
+        <input id="gasto-monto" type="text" inputmode="decimal" placeholder="$ 0" autocomplete="off">
+        <input id="gasto-desc" type="text" placeholder="¿En qué fue? (opcional)" autocomplete="off">
+        <div class="cat-chips" id="cat-chips"></div>
+        <button class="btn-primary" id="btn-gasto">Agregar gasto</button>
+      </div>
+
+      <div class="gastos-lista" id="gastos-lista"></div>
     </section>
 
     <!-- ============ VISTA: NOTAS (próximamente) ============ -->

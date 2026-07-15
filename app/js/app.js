@@ -1,6 +1,7 @@
 // ====== KBL App — módulo Foco v1 ======
 import { getSessions, addSession, getActive, setActive, getStats, initSync } from './store.js';
 import { SPECIES, renderTree, miniTree, speciesCard, dayPhase } from './tree.js';
+import { initGastos, renderGastos } from './gastos.js';
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -31,6 +32,7 @@ document.querySelectorAll('.tab').forEach(tab => {
     document.querySelectorAll('.view').forEach(v =>
       v.classList.toggle('active', v.id === 'view-' + tab.dataset.view));
     if (tab.dataset.view === 'bosque') renderBosque();
+    if (tab.dataset.view === 'gastos') renderGastos();
   });
 });
 
@@ -249,6 +251,7 @@ setInterval(() => {
 
 async function boot() {
   applyPhase();
+  initGastos();
   resetToIdle(); // render inmediato; el sync ajusta el estado si hace falta
   await initSync(onRemoteChange);
   const active = getActive();

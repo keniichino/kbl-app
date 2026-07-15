@@ -306,6 +306,79 @@ body[data-phase="noche"] .tabbar { background: linear-gradient(150deg, rgba(255,
 .forest-empty { text-align: center; padding: 48px 32px; color: var(--ink-soft); font-weight: 700; }
 .empty-emoji { font-size: 3rem; margin-bottom: 10px; }
 
+/* ====== Gastos ====== */
+.gasto-hero {
+  margin: 10px 16px;
+  padding: 20px 18px 16px;
+  text-align: center;
+  background: linear-gradient(150deg, rgba(255,255,255,.55), rgba(255,255,255,.22));
+  backdrop-filter: blur(24px) saturate(1.6);
+  -webkit-backdrop-filter: blur(24px) saturate(1.6);
+  border: 1px solid rgba(255,255,255,.65);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-soft), inset 0 1px 0 rgba(255,255,255,.9);
+}
+.gasto-total { font-size: 2.2rem; font-weight: 900; letter-spacing: -0.5px; }
+.gasto-total-sub { font-size: .8rem; font-weight: 800; color: var(--ink-soft); text-transform: uppercase; letter-spacing: .5px; }
+.gasto-cats-resumen { display: flex; gap: 8px; justify-content: center; margin-top: 10px; flex-wrap: wrap; }
+.cat-mini {
+  font-size: .78rem; font-weight: 800;
+  background: rgba(255,255,255,.55);
+  border: 1px solid rgba(255,255,255,.7);
+  border-radius: 12px;
+  padding: 4px 10px;
+}
+
+.gasto-form {
+  margin: 0 16px 8px;
+  padding: 16px;
+  background: linear-gradient(150deg, rgba(255,255,255,.5), rgba(255,255,255,.2));
+  backdrop-filter: blur(24px) saturate(1.6);
+  -webkit-backdrop-filter: blur(24px) saturate(1.6);
+  border: 1px solid rgba(255,255,255,.65);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-soft), inset 0 1px 0 rgba(255,255,255,.9);
+  display: flex; flex-direction: column; gap: 10px;
+}
+.gasto-form input {
+  font: 800 1.05rem 'Nunito', sans-serif;
+  color: var(--ink);
+  background: rgba(255,255,255,.6);
+  border: 1.5px solid rgba(255,255,255,.8);
+  border-radius: 14px;
+  padding: 12px 14px;
+  outline: none;
+}
+#gasto-monto { font-size: 1.5rem; text-align: center; }
+.gasto-form input::placeholder { color: #9ab0a2; }
+.cat-chips { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
+.cat-chip { flex-shrink: 0; font-size: .85rem; padding: 8px 12px; }
+
+.gastos-lista { padding: 4px 16px 24px; }
+.gasto-dia {
+  font-size: .75rem; font-weight: 900; color: var(--ink-soft);
+  text-transform: uppercase; letter-spacing: .8px;
+  margin: 14px 6px 6px;
+}
+.gasto-item {
+  display: flex; align-items: center; gap: 10px;
+  background: rgba(255,255,255,.5);
+  border: 1px solid rgba(255,255,255,.65);
+  border-radius: 16px;
+  padding: 10px 12px;
+  margin-bottom: 6px;
+  box-shadow: 0 4px 12px rgba(35,64,50,.06);
+}
+.gasto-emoji { font-size: 1.2rem; }
+.gasto-desc { flex: 1; font-weight: 800; font-size: .95rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gasto-monto { font-weight: 900; font-size: .95rem; }
+.gasto-borrar {
+  border: none; background: rgba(0,0,0,.06);
+  width: 24px; height: 24px; border-radius: 50%;
+  font-size: .7rem; color: var(--ink-soft);
+  cursor: pointer;
+}
+
 /* ====== Próximamente ====== */
 .soon {
   min-height: 70dvh;

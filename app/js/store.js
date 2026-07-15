@@ -10,6 +10,7 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 const KEYS = {
   sessions: 'kbl.foco.sessions',
   active: 'kbl.foco.active',
+  gastos: 'kbl.gastos',
 };
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -130,6 +131,25 @@ export async function initSync(onRemoteChange) {
       notify('active');
     })
     .subscribe();
+}
+
+// --- Gastos: [{ id, monto, descripcion, categoria, fecha, ts }] ---
+// Por ahora SOLO local (device-privado). El sync a Supabase se activa
+// junto con Auth + RLS: plata sin login sería legible públicamente.
+
+export function getGastos() {
+  return read(KEYS.gastos, []);
+}
+
+export function addGasto(gasto) {
+  const all = getGastos();
+  all.push(gasto);
+  write(KEYS.gastos, all);
+  return gasto;
+}
+
+export function removeGasto(id) {
+  write(KEYS.gastos, getGastos().filter((g) => g.id !== id));
 }
 
 // --- Estadísticas derivadas ---
