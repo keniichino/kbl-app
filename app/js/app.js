@@ -2,6 +2,7 @@
 import { getSessions, addSession, getActive, setActive, getStats, initSync } from './store.js';
 import { SPECIES, renderTree, miniTree, speciesCard, dayPhase } from './tree.js';
 import { initGastos, renderGastos } from './gastos.js';
+import { initViewer360 } from './viewer360.js';
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -252,6 +253,10 @@ setInterval(() => {
 async function boot() {
   applyPhase();
   initGastos();
+  initViewer360(document.querySelector('#viewer-sakura'), {
+    frames: 36,
+    src: (i) => `assets/sakura360/sakura_${String(i).padStart(2, '0')}.webp`,
+  });
   resetToIdle(); // render inmediato; el sync ajusta el estado si hace falta
   await initSync(onRemoteChange);
   const active = getActive();

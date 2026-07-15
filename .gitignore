@@ -13,3 +13,4 @@ desktop.ini
 # Addon de terceros descargado (no redistribuir hasta decidir)
 blender/addon.py
 blender/*.png
+blender/turntable/
