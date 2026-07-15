@@ -306,13 +306,21 @@ body {
   to { transform: translateY(110vh) rotate(720deg); opacity: .6; }
 }
 
-/* ====== Desktop ====== */
+/* ====== Desktop: marco tipo teléfono centrado ====== */
 @media (min-width: 720px) {
-  body { display: flex; align-items: center; justify-content: center; }
+  body {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100dvh;
+  }
   #app {
+    width: 430px;
+    flex: 0 0 430px;
     min-height: auto;
     height: 860px;
     max-height: 92dvh;
+    padding-bottom: 0;
     border-radius: 40px;
     overflow: hidden auto;
     box-shadow: 0 30px 80px rgba(35,64,50,.25);
@@ -320,5 +328,12 @@ body {
     position: relative;
     scrollbar-width: none;
   }
-  .tabbar { position: sticky; bottom: 0; }
+  .tabbar {
+    position: sticky;
+    bottom: 0;
+    max-width: none;
+    height: var(--tabbar-h);
+    padding-bottom: 0;
+    margin: auto 0 0; /* pegada abajo; sin auto horizontal para que estire */
+  }
 }
