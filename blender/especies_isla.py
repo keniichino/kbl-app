@@ -1,4 +1,4 @@
-# Especies de la app (arbolito / roble / flor) sobre isla flotante low poly
+# Especies de la app (arbolito / roble / flor / sakura) sobre isla flotante low poly
 # Mismo estandar que arbol_isla.py (sakura). Camara e isla FIJAS para que el
 # selector de la app no salte de escala entre especies.
 #
@@ -6,6 +6,7 @@
 #   blender.exe --background --python especies_isla.py -- --especie arbolito --test
 #   blender.exe --background --python especies_isla.py -- --especie roble
 #   blender.exe --background --python especies_isla.py -- --especie flor --seed 7
+#   blender.exe --background --python especies_isla.py -- --especie sakura
 import bpy, math, random, sys, time, os
 from mathutils import Vector
 
@@ -14,8 +15,8 @@ argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
 ESPECIE = "arbolito"
 if "--especie" in argv:
     ESPECIE = argv[argv.index("--especie") + 1]
-assert ESPECIE in ("arbolito", "roble", "flor"), ESPECIE
-SEEDS_DEF = {"arbolito": 21, "roble": 31, "flor": 41}
+assert ESPECIE in ("arbolito", "roble", "flor", "sakura"), ESPECIE
+SEEDS_DEF = {"arbolito": 21, "roble": 31, "flor": 41, "sakura": 11}
 SEED = SEEDS_DEF[ESPECIE]
 if "--seed" in argv:
     SEED = int(argv[argv.index("--seed") + 1])
@@ -54,6 +55,9 @@ PAL = {
                      rim=(0.80, 1.0, 0.80)),
     "flor":     dict(light=srgb2lin("ffd3e8"), mid=srgb2lin("ff8fc7"),
                      deep=srgb2lin("c94b8e"), bark=srgb2lin("3d9433"),
+                     rim=(1.0, 0.62, 0.82)),
+    "sakura":   dict(light=srgb2lin("ffc9e4"), mid=srgb2lin("f272b6"),
+                     deep=srgb2lin("ad3d7f"), bark=srgb2lin("3a2820"),
                      rim=(1.0, 0.62, 0.82)),
 }[ESPECIE]
 COL_CENTRO  = srgb2lin("ffd76e")
@@ -104,6 +108,7 @@ RAMP_CFG = {  # soften, pos_mid, pos_light, discreto
     "arbolito": (0.62, 0.42, 0.80, False),
     "roble":    (0.90, 0.30, 0.85, True),   # tri-tono franco, sin pastel
     "flor":     (0.80, 0.38, 0.88, False),
+    "sakura":   (0.42, 0.40, 0.78, False),  # mismo ramp que make_blossom original
 }[ESPECIE]
 MAT_COPA    = ramp3_mat("copa", PAL["deep"], PAL["mid"], PAL["light"],
                         soften=RAMP_CFG[0], pos_mid=RAMP_CFG[1],
@@ -396,7 +401,92 @@ def build_flor():
         scatter_quad(pet_small, Vector((math.cos(ang) * rr,
                                         math.sin(ang) * rr, z)), 0.9, 1.4)
 
-{"arbolito": build_arbolito, "roble": build_roble, "flor": build_flor}[ESPECIE]()
+def build_sakura():
+    """Sakura dreamy: port 1:1 del arbol de arbol_isla.py (seed 11).
+    Replica la MISMA secuencia de llamadas random que el original para
+    reproducir la geometria aprobada; solo cambian isla y pipeline."""
+    TREE_H, TRUNK_R = 4.0, 0.15
+    cu, _ = new_tree_curve("tronco", MAT_BARK)
+    tips = []
+    # tronco (level 0 original: jitter 0.28*0.5, up 0.22)
+    spawn0, (top, topd) = grow(cu, Vector((0, 0, 0)), Vector((0.12, -0.05, 1)),
+                               0.92, TRUNK_R, TRUNK_R * 0.55,
+                               jitter=0.14, up=0.22)
+    # 4 ramas principales (level 1)
+    base_ang = random.uniform(0, math.pi * 2)
+    level1_ends = []
+    for k in range(4):
+        ang = base_ang + k * (2 * math.pi / 4) + random.uniform(-0.4, 0.4)
+        tilt = random.uniform(0.65, 1.1)
+        d = Vector((math.cos(ang) * math.sin(tilt),
+                    math.sin(ang) * math.sin(tilt), math.cos(tilt)))
+        src = top if k < 3 else spawn0[len(spawn0) // 2][0]
+        r_here = TRUNK_R * 0.55 if k < 3 else spawn0[len(spawn0) // 2][2]
+        sp, end = grow(cu, src, d, TREE_H * 0.42, r_here * 0.8, r_here * 0.32,
+                       jitter=0.28, up=0.10)
+        level1_ends.append((sp, end))
+    # sub-ramas (level 2, alimentan tips)
+    for sp, end in level1_ends:
+        picks = random.sample(sp, min(2, len(sp)))
+        srcs = [(p, d, r) for (p, d, r) in picks]
+        srcs.append((end[0], end[1], TRUNK_R * 0.18))
+        for (p, d, r) in srcs:
+            dd = (d + Vector((random.uniform(-0.8, 0.8),
+                              random.uniform(-0.8, 0.8),
+                              random.uniform(0.05, 0.5)))).normalized()
+            grow(cu, p, dd, TREE_H * 0.22, max(r * 0.6, 0.02), 0.012,
+                 jitter=0.28, up=0.10, tips=tips)
+    # copa: racimos chicos sobre ramas medias + grandes en puntas + nube extra
+    cluster_centers = []
+    for sp, end in level1_ends:
+        for (p, d, r) in sp[-2:]:
+            c = p + Vector((random.uniform(-0.1, 0.1),
+                            random.uniform(-0.1, 0.1),
+                            random.uniform(0.02, 0.15)))
+            add_cluster(c, random.uniform(0.24, 0.34))
+    for (p, d) in tips:
+        c = p + d * random.uniform(0.05, 0.2)
+        add_cluster(c, random.uniform(0.32, 0.52))
+        cluster_centers.append(c)
+    centroid = sum(cluster_centers, Vector()) / len(cluster_centers)
+    centroid.z += 0.15
+    for _ in range(48):
+        a = random.choice(cluster_centers)
+        t = random.uniform(0.15, 0.75)
+        c = a.lerp(centroid, t) + Vector((random.uniform(-0.6, 0.6),
+                                          random.uniform(-0.6, 0.6),
+                                          random.uniform(-0.5, 0.45)))
+        add_cluster(c, random.uniform(0.32 * 0.9, 0.52 * 1.15))
+    low_tips = sorted(cluster_centers, key=lambda v: v.z)[:5]
+    for a in low_tips:
+        c = a + Vector((random.uniform(-0.25, 0.25),
+                        random.uniform(-0.25, 0.25),
+                        random.uniform(-0.55, -0.2)))
+        add_cluster(c, random.uniform(0.32 * 0.8, 0.32 * 1.1))
+    canopy_r = max(math.hypot(c.x, c.y) + r for c, r in clusters)
+    canopy_lo = min(c.z - r for c, r in clusters)
+    # petalos instanciados (130 sobre copa + 36 cayendo = 166)
+    mat_pet = simple_mat("petalo_sakura",
+                         tuple(0.6 * l + 0.4 for l in PAL["light"]), 0.7)
+    pet_me = bpy.data.meshes.new("petalo")
+    pet_me.from_pydata(
+        [(-0.035, 0, 0), (0, 0.024, 0.007), (0.035, 0, 0), (0, -0.024, 0.007)],
+        [], [(0, 1, 2, 3)])
+    pet_me.materials.append(mat_pet)
+    for _ in range(130):
+        c, r = random.choice(clusters)
+        d = Vector((random.gauss(0, 1), random.gauss(0, 1),
+                    abs(random.gauss(0, 0.9)))).normalized()
+        scatter_quad(pet_me, c + d * r * random.uniform(1.0, 1.12))
+    for _ in range(36):
+        ang = random.uniform(0, 6.28)
+        rr = random.uniform(0.25, canopy_r * 0.7)
+        z = random.uniform(0.12, canopy_lo + 0.4)
+        scatter_quad(pet_me, Vector((math.cos(ang) * rr,
+                                     math.sin(ang) * rr, z)))
+
+{"arbolito": build_arbolito, "roble": build_roble, "flor": build_flor,
+ "sakura": build_sakura}[ESPECIE]()
 
 # ------------------------------------------------------------------ isla flotante (aprobada, cono 35% mas chato)
 bpy.ops.mesh.primitive_cylinder_add(vertices=22, radius=GRASS_R, depth=GRASS_TH,
