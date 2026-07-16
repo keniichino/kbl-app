@@ -423,6 +423,7 @@ body[data-phase="noche"] .tabbar { background: linear-gradient(150deg, rgba(255,
 }
 .nota-fecha { color: var(--accent-deep); font-weight: 700; margin-right: 6px; }
 
+.nota-editor[hidden] { display: none; }
 .nota-editor {
   position: fixed;
   inset: 0;
