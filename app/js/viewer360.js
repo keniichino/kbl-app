@@ -1,12 +1,18 @@
 // ====== Visor 360: girar un objeto pre-renderizado con dedo/mouse ======
 // Técnica turntable: N frames renderizados en Blender; arrastrar scrubea
-// entre frames. Soporta cambiar de set de frames (especies) en caliente.
+// entre frames. Para que se sienta fluido y no a "saltos" (el ojo nota
+// cada corte entre foto y foto), se dibuja en un <canvas> mezclando
+// (cross-fade) los dos frames vecinos según la posición fraccional —
+// simula el desenfoque de movimiento de una rotación real.
+
+const W = 800, H = 1000; // resolución de render de Blender
 
 export function initViewer360(el, { frames = 36 } = {}) {
-  const img = document.createElement('img');
-  img.draggable = false;
-  img.alt = 'Vista 360';
-  el.appendChild(img);
+  const canvas = document.createElement('canvas');
+  canvas.width = W;
+  canvas.height = H;
+  el.appendChild(canvas);
+  const ctx = canvas.getContext('2d');
 
   let imgs = [];
   let frame = 0;
@@ -15,10 +21,26 @@ export function initViewer360(el, { frames = 36 } = {}) {
   let vel = 0;
   let auto = true; // gira solo, despacito, hasta que el usuario lo toca
 
+  function frameEnRango(f) {
+    // floor + fracción, correcto también para f negativo
+    const i0 = Math.floor(f);
+    const t = f - i0;
+    const norm = ((i0 % frames) + frames) % frames;
+    return { i0: norm, i1: (norm + 1) % frames, t };
+  }
+
   const show = () => {
-    const idx = ((Math.round(frame) % frames) + frames) % frames;
-    const im = imgs[idx];
-    if (im && im.complete && im.naturalWidth) img.src = im.src;
+    const { i0, i1, t } = frameEnRango(frame);
+    const a = imgs[i0], b = imgs[i1];
+    if (!a || !a.complete || !a.naturalWidth) return;
+    ctx.clearRect(0, 0, W, H);
+    ctx.globalAlpha = 1;
+    ctx.drawImage(a, 0, 0, W, H);
+    if (t > 0.01 && b && b.complete && b.naturalWidth) {
+      ctx.globalAlpha = t;
+      ctx.drawImage(b, 0, 0, W, H);
+      ctx.globalAlpha = 1;
+    }
   };
 
   function setSrc(src, onMissing) {
@@ -41,8 +63,8 @@ export function initViewer360(el, { frames = 36 } = {}) {
   }
 
   (function loop() {
-    if (auto) { frame += 0.07; show(); }
-    else if (!dragging && Math.abs(vel) > 0.02) { frame += vel; vel *= 0.94; show(); }
+    if (auto) { frame += 0.045; show(); }
+    else if (!dragging && Math.abs(vel) > 0.015) { frame += vel; vel *= 0.94; show(); }
     requestAnimationFrame(loop);
   })();
 

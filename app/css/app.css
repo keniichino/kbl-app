@@ -332,7 +332,7 @@ body[data-phase="noche"] .tabbar { background: linear-gradient(150deg, rgba(255,
   user-select: none;
 }
 .viewer360.grabbing { cursor: grabbing; }
-.viewer360 img { height: 100%; pointer-events: none; }
+.viewer360 canvas { height: 100%; width: auto; pointer-events: none; }
 .viewer-hint {
   position: absolute;
   bottom: 10px; left: 0; right: 0;
