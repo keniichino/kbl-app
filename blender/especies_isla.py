@@ -76,7 +76,8 @@ def simple_mat(name, col, rough=0.9):
     b.inputs["Roughness"].default_value = rough
     return m
 
-def ramp3_mat(name, deep, mid, light, soften=0.5, pos_mid=0.42, pos_light=0.80):
+def ramp3_mat(name, deep, mid, light, soften=0.5, pos_mid=0.42, pos_light=0.80,
+              discreto=False):
     """Material con variacion por objeto: deep->mid->light via Object Info Random."""
     m = bpy.data.materials.new(name)
     m.use_nodes = True
@@ -85,6 +86,8 @@ def ramp3_mat(name, deep, mid, light, soften=0.5, pos_mid=0.42, pos_light=0.80):
     bsdf.inputs["Roughness"].default_value = 0.9
     info = nt.nodes.new("ShaderNodeObjectInfo")
     ramp = nt.nodes.new("ShaderNodeValToRGB")
+    if discreto:
+        ramp.color_ramp.interpolation = 'CONSTANT'
     soft_deep = tuple(soften * d + (1 - soften) * mm for d, mm in zip(deep, mid))
     ramp.color_ramp.elements[0].position = 0.0
     ramp.color_ramp.elements[0].color = (*soft_deep, 1)
@@ -97,14 +100,14 @@ def ramp3_mat(name, deep, mid, light, soften=0.5, pos_mid=0.42, pos_light=0.80):
     return m
 
 MAT_BARK    = simple_mat("bark", PAL["bark"], 0.95)
-RAMP_CFG = {  # soften, pos_mid, pos_light (mas alto = menos claro)
-    "arbolito": (0.62, 0.42, 0.80),
-    "roble":    (0.80, 0.52, 0.93),
-    "flor":     (0.80, 0.38, 0.88),
+RAMP_CFG = {  # soften, pos_mid, pos_light, discreto
+    "arbolito": (0.62, 0.42, 0.80, False),
+    "roble":    (0.90, 0.30, 0.85, True),   # tri-tono franco, sin pastel
+    "flor":     (0.80, 0.38, 0.88, False),
 }[ESPECIE]
 MAT_COPA    = ramp3_mat("copa", PAL["deep"], PAL["mid"], PAL["light"],
                         soften=RAMP_CFG[0], pos_mid=RAMP_CFG[1],
-                        pos_light=RAMP_CFG[2])
+                        pos_light=RAMP_CFG[2], discreto=RAMP_CFG[3])
 MAT_PASTO   = simple_mat("pasto", COL_PASTO, 0.95)
 MAT_PASTO_B = simple_mat("pasto_borde", COL_PASTO_B, 0.95)
 MAT_TIERRA  = simple_mat("tierra", COL_TIERRA, 1.0)
@@ -334,9 +337,23 @@ def build_flor():
          (0.14 + L * 0.42, -W, 0.07),
          (0.14 + L * 0.42, 0, 0.03)],   # vertice central para leve concavidad
         [], [(0, 1, 4), (1, 2, 4), (2, 3, 4), (3, 0, 4)])
-    pet_me.materials.append(MAT_COPA)   # ramp rosa por objeto
+    # colores explicitos por petalo (mayoria mid, toques light y un deep)
+    mat_p_light = simple_mat("petalo_light", PAL["light"], 0.85)
+    mat_p_mid   = simple_mat("petalo_mid", PAL["mid"], 0.85)
+    mat_p_deep  = simple_mat("petalo_deep",
+                             tuple(0.55 * d + 0.45 * m for d, m in
+                                   zip(PAL["deep"], PAL["mid"])), 0.85)
+    orden = [mat_p_mid, mat_p_light, mat_p_mid, mat_p_light,
+             mat_p_mid, mat_p_deep, mat_p_mid, mat_p_light]
+    meshes_pet = []
+    for mat in (mat_p_mid, mat_p_light, mat_p_deep):
+        me = pet_me.copy()
+        me.materials.append(mat)
+        meshes_pet.append(me)
+    lut = {mat_p_mid: meshes_pet[0], mat_p_light: meshes_pet[1],
+           mat_p_deep: meshes_pet[2]}
     for k in range(8):
-        ob = bpy.data.objects.new("petalo", pet_me)
+        ob = bpy.data.objects.new("petalo", lut[orden[k]])
         ob.parent = head
         ob.rotation_euler = (random.uniform(-0.05, 0.05),
                              random.uniform(-0.10, -0.02),  # leve alzado
@@ -396,7 +413,10 @@ for v in disco.data.vertices:
         v.co.x *= f
         v.co.y *= f
 
-bpy.ops.mesh.primitive_cone_add(vertices=10, radius1=GRASS_R * 0.94, radius2=0,
+# cono invertido de verdad: anillo ancho arriba (pegado al pasto), punta abajo
+# (el de la sakura estaba al reves: apice arriba oculto y anillo abajo -> masa
+#  tipo pedestal sin punta; aca queda la isla flotante clasica, mas chata)
+bpy.ops.mesh.primitive_cone_add(vertices=10, radius1=0, radius2=GRASS_R * 0.94,
                                 depth=CONE_D,
                                 location=(0, 0, -GRASS_TH - CONE_D / 2))
 cono = bpy.context.active_object
@@ -407,15 +427,11 @@ for poly in cono.data.polygons:
     poly.material_index = random.choice((0, 0, 1))
 for v in cono.data.vertices:
     if abs(v.co.x) < 0.01 and abs(v.co.y) < 0.01:
-        # apice: punta definida, sin jitter lateral, estirada hacia abajo
+        # apice inferior: punta definida, sin jitter lateral, estirada abajo
         v.co.z = -CONE_D / 2 - APEX_EXTRA
-    elif v.co.z > CONE_D / 2 - 0.01:     # anillo superior: no tocar z
+    else:                                # anillo superior: no tocar z
         v.co.x *= 1 + random.uniform(-0.06, 0.06)
         v.co.y *= 1 + random.uniform(-0.06, 0.06)
-    else:
-        v.co.x += random.uniform(-0.12, 0.12)
-        v.co.y += random.uniform(-0.12, 0.12)
-        v.co.z += random.uniform(-0.10, 0.06)
 
 for _ in range(24):
     ang = random.uniform(0, 6.28)
