@@ -629,6 +629,54 @@ body[data-phase="noche"] .tabbar { background: linear-gradient(150deg, rgba(255,
 .tab.active { color: var(--accent-deep); }
 .tab-icon { font-size: 1.45rem; }
 
+/* ====== Diálogo estilo iOS ====== */
+.dialog-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: rgba(30, 40, 35, .3);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: dialogIn .18s ease-out;
+}
+.dialog-overlay.saliendo { opacity: 0; transition: opacity .15s; }
+@keyframes dialogIn { from { opacity: 0; } }
+.dialog-card {
+  width: min(300px, 82vw);
+  background: rgba(252, 253, 252, .92);
+  backdrop-filter: blur(30px) saturate(1.6);
+  -webkit-backdrop-filter: blur(30px) saturate(1.6);
+  border-radius: 18px;
+  overflow: hidden;
+  box-shadow: 0 24px 60px rgba(20, 30, 25, .3);
+  animation: dialogPop .22s cubic-bezier(.2,.9,.3,1.25);
+  text-align: center;
+}
+@keyframes dialogPop { from { transform: scale(.9); opacity: 0; } }
+.dialog-titulo { font-weight: 700; font-size: 1.02rem; padding: 18px 20px 4px; }
+.dialog-mensaje { font-size: .86rem; color: var(--ink-soft); padding: 0 20px 4px; line-height: 1.4; }
+.dialog-botones {
+  display: flex;
+  margin-top: 14px;
+  border-top: 0.5px solid rgba(60, 80, 70, .18);
+}
+.dialog-btn {
+  flex: 1;
+  border: none;
+  background: none;
+  font: 400 1rem var(--font);
+  color: #2a6fd6;
+  padding: 13px 0;
+  cursor: pointer;
+}
+.dialog-btn + .dialog-btn { border-left: 0.5px solid rgba(60, 80, 70, .18); }
+.dialog-btn.principal { font-weight: 700; }
+.dialog-btn.destructivo { font-weight: 700; color: #e03e3e; }
+.dialog-btn:active { background: rgba(0,0,0,.05); }
+
 /* ====== Confetti ====== */
 #confetti-layer { position: fixed; inset: 0; pointer-events: none; z-index: 50; overflow: hidden; }
 .confetti {

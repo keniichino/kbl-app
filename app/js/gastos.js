@@ -1,5 +1,6 @@
 // ====== Módulo Gastos — carga en 5 segundos ======
 import { getGastos, addGasto, removeGasto } from './store.js';
+import { confirmar } from './dialog.js';
 
 export const CATEGORIAS = [
   { key: 'comida',     emoji: '🍔', label: 'Comida' },
@@ -127,10 +128,11 @@ export function initGastos() {
   $('#gasto-desc').addEventListener('keydown', (e) => { if (e.key === 'Enter') agregar(); });
   $('#gasto-monto').addEventListener('keydown', (e) => { if (e.key === 'Enter') agregar(); });
 
-  $('#gastos-lista').addEventListener('click', (e) => {
+  $('#gastos-lista').addEventListener('click', async (e) => {
     const btn = e.target.closest('.gasto-borrar');
     if (!btn) return;
-    if (confirm('¿Borrar este gasto?')) {
+    const ok = await confirmar({ titulo: '¿Borrar este gasto?', accion: 'Borrar', destructivo: true });
+    if (ok) {
       removeGasto(btn.dataset.id);
       render();
     }

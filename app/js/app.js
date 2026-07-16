@@ -4,6 +4,7 @@ import { SPECIES, renderTree, miniTree, speciesCard, dayPhase } from './tree.js'
 import { initGastos, renderGastos } from './gastos.js';
 import { initViewer360 } from './viewer360.js';
 import { initNotas, renderNotas } from './notas.js';
+import { confirmar } from './dialog.js';
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -108,10 +109,16 @@ function completeSession(active) {
   confetti();
 }
 
-function giveUp() {
+async function giveUp() {
   const active = getActive();
   if (!active) return;
-  if (!confirm('¿Rendirte? El árbol se va a marchitar 🥀')) return;
+  const ok = await confirmar({
+    titulo: '¿Rendirte?',
+    mensaje: 'El árbol se va a marchitar y queda en tu bosque como recordatorio.',
+    accion: 'Rendirme',
+    destructivo: true,
+  });
+  if (!ok) return;
 
   stopTicking();
   setActive(null);

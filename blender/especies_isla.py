@@ -31,7 +31,8 @@ CAM_Z    = 0.962
 CAM_LENS = 50.0
 GRASS_R  = 2.48            # mismo radio de isla que la sakura
 GRASS_TH = 0.30
-CONE_D   = 1.9 * 0.65      # cono ~35% mas chato que el de la sakura
+CONE_D   = 1.9 * 0.62      # cono ~35% mas chato que el de la sakura
+APEX_EXTRA = 0.22          # estiron del apice para punta definida
 
 random.seed(SEED)
 t0 = time.time()
@@ -75,7 +76,7 @@ def simple_mat(name, col, rough=0.9):
     b.inputs["Roughness"].default_value = rough
     return m
 
-def ramp3_mat(name, deep, mid, light, soften=0.5):
+def ramp3_mat(name, deep, mid, light, soften=0.5, pos_mid=0.42, pos_light=0.80):
     """Material con variacion por objeto: deep->mid->light via Object Info Random."""
     m = bpy.data.materials.new(name)
     m.use_nodes = True
@@ -87,17 +88,23 @@ def ramp3_mat(name, deep, mid, light, soften=0.5):
     soft_deep = tuple(soften * d + (1 - soften) * mm for d, mm in zip(deep, mid))
     ramp.color_ramp.elements[0].position = 0.0
     ramp.color_ramp.elements[0].color = (*soft_deep, 1)
-    ramp.color_ramp.elements[1].position = 0.80
+    ramp.color_ramp.elements[1].position = pos_light
     ramp.color_ramp.elements[1].color = (*light, 1)
-    e_mid = ramp.color_ramp.elements.new(0.42)
+    e_mid = ramp.color_ramp.elements.new(pos_mid)
     e_mid.color = (*mid, 1)
     nt.links.new(info.outputs["Random"], ramp.inputs["Fac"])
     nt.links.new(ramp.outputs["Color"], bsdf.inputs["Base Color"])
     return m
 
 MAT_BARK    = simple_mat("bark", PAL["bark"], 0.95)
+RAMP_CFG = {  # soften, pos_mid, pos_light (mas alto = menos claro)
+    "arbolito": (0.62, 0.42, 0.80),
+    "roble":    (0.80, 0.52, 0.93),
+    "flor":     (0.80, 0.38, 0.88),
+}[ESPECIE]
 MAT_COPA    = ramp3_mat("copa", PAL["deep"], PAL["mid"], PAL["light"],
-                        soften=0.55 if ESPECIE == "flor" else 0.62)
+                        soften=RAMP_CFG[0], pos_mid=RAMP_CFG[1],
+                        pos_light=RAMP_CFG[2])
 MAT_PASTO   = simple_mat("pasto", COL_PASTO, 0.95)
 MAT_PASTO_B = simple_mat("pasto_borde", COL_PASTO_B, 0.95)
 MAT_TIERRA  = simple_mat("tierra", COL_TIERRA, 1.0)
@@ -107,7 +114,8 @@ MAT_FLOR_B  = simple_mat("flor_blanca", (0.9, 0.9, 0.92), 0.8)
 MAT_FLOR_R  = simple_mat("flor_rosa", srgb2lin("ffc9e4"), 0.8)
 MAT_HOJA    = simple_mat("hojita", COL_HOJA, 0.85)
 MAT_PET_SUELTO = simple_mat("petalo_suelto",
-                            tuple(0.6 * l + 0.4 for l in PAL["light"]), 0.7)
+                            tuple(0.55 * l + 0.45 * m for l, m in
+                                  zip(PAL["light"], PAL["mid"])), 0.7)
 MAT_CENTRO  = simple_mat("centro_flor", COL_CENTRO, 0.85)
 MAT_TALLO   = simple_mat("tallo", srgb2lin("4aa851"), 0.9)
 
@@ -210,7 +218,7 @@ def build_arbolito():
     tips = []
     # tronco corto
     _, (top, topd) = grow(cu, Vector((0, 0, 0)), Vector((0.06, -0.03, 1)),
-                          0.85, 0.115, 0.07, jitter=0.14, up=0.18)
+                          0.85, 0.13, 0.075, jitter=0.14, up=0.18)
     # 4 ramitas cortas hacia la copa
     base_ang = random.uniform(0, math.pi * 2)
     for k in range(4):
@@ -221,16 +229,16 @@ def build_arbolito():
         grow(cu, top, d, 0.75, 0.055, 0.02, jitter=0.22, up=0.12, tips=tips)
     # copa: blob esferico compacto alrededor de C
     C = Vector((0, 0, 2.05))
-    add_cluster(C + Vector((0, 0, 0.02)), 0.70)
-    for k in range(6):
-        ang = k * (math.pi / 3) + random.uniform(-0.25, 0.25)
-        rr = random.uniform(0.52, 0.66)
+    add_cluster(C + Vector((0, 0, 0.02)), 0.74)
+    for k in range(7):
+        ang = k * (2 * math.pi / 7) + random.uniform(-0.22, 0.22)
+        rr = random.uniform(0.55, 0.70)
         c = C + Vector((math.cos(ang) * rr, math.sin(ang) * rr,
-                        random.uniform(-0.12, 0.16)))
-        add_cluster(c, random.uniform(0.40, 0.50))
+                        random.uniform(-0.12, 0.18)))
+        add_cluster(c, random.uniform(0.42, 0.52))
     add_cluster(C + Vector((random.uniform(-0.15, 0.15),
-                            random.uniform(-0.15, 0.15), 0.58)),
-                random.uniform(0.42, 0.5))
+                            random.uniform(-0.15, 0.15), 0.60)),
+                random.uniform(0.44, 0.52))
     for _ in range(2):
         c = C + Vector((random.uniform(-0.35, 0.35),
                         random.uniform(-0.35, 0.35),
@@ -252,17 +260,17 @@ def build_roble():
     _, (top, topd) = grow(cu, Vector((0, 0, 0)), Vector((0.05, 0.02, 1)),
                           1.35, 0.27, 0.155, jitter=0.10, up=0.20)
     # lobulos de la copa
-    lobeA = Vector((0.95, 0.10, 3.35))    # lobulo principal
-    lobeB = Vector((-0.95, -0.12, 2.95))  # lobulo secundario
+    lobeA = Vector((0.95, 0.10, 3.30))    # lobulo principal
+    lobeB = Vector((-0.95, -0.12, 2.85))  # lobulo secundario
     # 5 ramas principales, apuntadas a los lobulos
     targets = [lobeA, lobeA, lobeA, lobeB, lobeB]
     lvl1 = []
     for i, tgt in enumerate(targets):
         goal = tgt + Vector((random.uniform(-0.5, 0.5),
                              random.uniform(-0.5, 0.5),
-                             random.uniform(-0.3, 0.4)))
+                             random.uniform(-0.3, 0.3)))
         d = (goal - top).normalized()
-        sp, end = grow(cu, top, d, random.uniform(1.5, 1.9), 0.13, 0.045,
+        sp, end = grow(cu, top, d, random.uniform(1.4, 1.7), 0.13, 0.045,
                        jitter=0.20, up=0.06, tips=tips)
         lvl1.append((sp, end))
     # sub-ramas
@@ -278,21 +286,21 @@ def build_roble():
         c = p + d * random.uniform(0.05, 0.2)
         add_cluster(c, random.uniform(0.42, 0.58))
     # relleno masivo alrededor de ambos lobulos (A mas denso)
-    for lobe, n, spread in ((lobeA, 26, 0.72), (lobeB, 18, 0.62)):
+    for lobe, n, spread in ((lobeA, 26, 0.62), (lobeB, 18, 0.55)):
         for _ in range(n):
             c = lobe + Vector((random.gauss(0, spread),
                                random.gauss(0, spread * 0.8),
                                random.gauss(0, spread * 0.62)))
-            c.x = max(-2.05, min(2.05, c.x))
-            c.y = max(-1.7, min(1.7, c.y))
-            c.z = max(2.1, min(4.15, c.z))
-            add_cluster(c, random.uniform(0.40, 0.62))
-    # puente entre lobulos + panza inferior
-    for _ in range(7):
+            c.x = max(-1.85, min(1.85, c.x))
+            c.y = max(-1.55, min(1.55, c.y))
+            c.z = max(2.1, min(3.90, c.z))
+            add_cluster(c, random.uniform(0.40, 0.60))
+    # puente entre lobulos (mas bajo, para que se lean los dos lobulos)
+    for _ in range(6):
         t = random.uniform(0.3, 0.7)
-        c = lobeA.lerp(lobeB, t) + Vector((0, random.uniform(-0.4, 0.4),
-                                           random.uniform(-0.1, 0.5)))
-        add_cluster(c, random.uniform(0.42, 0.58))
+        c = lobeA.lerp(lobeB, t) + Vector((0, random.uniform(-0.35, 0.35),
+                                           random.uniform(-0.25, 0.15)))
+        add_cluster(c, random.uniform(0.40, 0.52))
     for _ in range(5):
         c = Vector((random.uniform(-1.3, 1.3), random.uniform(-0.8, 0.8),
                     random.uniform(1.95, 2.35)))
@@ -317,14 +325,14 @@ def build_flor():
     scene.collection.objects.link(head)
 
     # petalo kite grande (apunta a +X local, con leve curvatura hacia arriba)
-    L, W = 1.12, 0.46
+    L, W = 1.24, 0.50
     pet_me = bpy.data.meshes.new("petalo_kite")
     pet_me.from_pydata(
         [(0.14, 0, 0.02),
-         (0.14 + L * 0.42, W, 0.10),
-         (0.14 + L, 0, 0.24),
-         (0.14 + L * 0.42, -W, 0.10),
-         (0.14 + L * 0.42, 0, 0.02)],   # vertice central para leve concavidad
+         (0.14 + L * 0.42, W, 0.07),
+         (0.14 + L, 0, 0.16),
+         (0.14 + L * 0.42, -W, 0.07),
+         (0.14 + L * 0.42, 0, 0.03)],   # vertice central para leve concavidad
         [], [(0, 1, 4), (1, 2, 4), (2, 3, 4), (3, 0, 4)])
     pet_me.materials.append(MAT_COPA)   # ramp rosa por objeto
     for k in range(8):
@@ -332,7 +340,8 @@ def build_flor():
         ob.parent = head
         ob.rotation_euler = (random.uniform(-0.05, 0.05),
                              random.uniform(-0.10, -0.02),  # leve alzado
-                             k * (math.pi / 4) + random.uniform(-0.05, 0.05))
+                             k * (math.pi / 4) + math.pi / 8
+                             + random.uniform(-0.05, 0.05))
         s = random.uniform(0.96, 1.04)
         ob.scale = (s, s, s)
         scene.collection.objects.link(ob)
@@ -397,9 +406,9 @@ cono.data.materials.append(MAT_TIERRA_D)
 for poly in cono.data.polygons:
     poly.material_index = random.choice((0, 0, 1))
 for v in cono.data.vertices:
-    if abs(v.co.x) < 0.01 and abs(v.co.y) < 0.01 and v.co.z < 0:
-        # apice: punta definida, sin jitter lateral, apenas estirada
-        v.co.z -= 0.07
+    if abs(v.co.x) < 0.01 and abs(v.co.y) < 0.01:
+        # apice: punta definida, sin jitter lateral, estirada hacia abajo
+        v.co.z = -CONE_D / 2 - APEX_EXTRA
     elif v.co.z > CONE_D / 2 - 0.01:     # anillo superior: no tocar z
         v.co.x *= 1 + random.uniform(-0.06, 0.06)
         v.co.y *= 1 + random.uniform(-0.06, 0.06)

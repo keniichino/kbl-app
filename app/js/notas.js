@@ -1,5 +1,6 @@
 // ====== Módulo Notas — lista + editor con autosave ======
 import { getNotas, upsertNota, removeNota } from './store.js';
+import { confirmar } from './dialog.js';
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -80,9 +81,10 @@ export function initNotas() {
   });
 
   $('#editor-volver').addEventListener('click', cerrarEditor);
-  $('#editor-borrar').addEventListener('click', () => {
+  $('#editor-borrar').addEventListener('click', async () => {
     if (!notaAbierta) return;
-    if (confirm('¿Borrar esta nota?')) {
+    const ok = await confirmar({ titulo: '¿Borrar esta nota?', accion: 'Borrar', destructivo: true });
+    if (ok) {
       removeNota(notaAbierta.id);
       notaAbierta = null;
       $('#nota-editor').hidden = true;
