@@ -432,14 +432,20 @@ body[data-phase="noche"] .tabbar { background: linear-gradient(150deg, rgba(255,
   flex-direction: column;
   max-width: 520px;
   margin: 0 auto;
-  padding: max(14px, env(safe-area-inset-top)) 18px calc(14px + env(safe-area-inset-bottom));
+  padding: 0 18px calc(14px + env(safe-area-inset-bottom));
   animation: viewIn .25s ease-out;
 }
 .editor-top {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 6px;
+  flex-shrink: 0;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  margin: 0 -18px 6px;
+  padding: max(14px, env(safe-area-inset-top)) 18px 8px;
+  background: var(--sky);
 }
 .editor-volver {
   border: none;

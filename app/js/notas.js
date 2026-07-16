@@ -35,12 +35,32 @@ function escapar(s) {
   return (s || '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 }
 
+// iOS Safari: al abrirse el teclado, el visual viewport se desplaza y puede
+// correr elementos position:fixed fuera de pantalla (el botón "‹ Notas"
+// queda inalcanzable). Mientras el editor está abierto, forzamos que la
+// ventana no se desplace — así el editor y su botón de salida quedan fijos.
+function lockScrollMientrasEditor(activar) {
+  if (activar) {
+    document.body.style.overflow = 'hidden';
+    window.visualViewport?.addEventListener('resize', reanclar);
+    window.visualViewport?.addEventListener('scroll', reanclar);
+  } else {
+    document.body.style.overflow = '';
+    window.visualViewport?.removeEventListener('resize', reanclar);
+    window.visualViewport?.removeEventListener('scroll', reanclar);
+  }
+}
+function reanclar() {
+  window.scrollTo(0, 0);
+}
+
 function abrirEditor(nota) {
   notaAbierta = nota;
   $('#editor-titulo').value = nota.titulo || '';
   $('#editor-contenido').value = nota.contenido || '';
   $('#editor-guardado').textContent = '';
   $('#nota-editor').hidden = false;
+  lockScrollMientrasEditor(true);
   if (!nota.titulo) $('#editor-titulo').focus();
 }
 
@@ -51,6 +71,7 @@ function cerrarEditor() {
   }
   notaAbierta = null;
   $('#nota-editor').hidden = true;
+  lockScrollMientrasEditor(false);
   renderLista();
 }
 
@@ -81,6 +102,11 @@ export function initNotas() {
   });
 
   $('#editor-volver').addEventListener('click', cerrarEditor);
+
+  // Salida de emergencia: Escape cierra el editor (además del botón)
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !$('#nota-editor').hidden) cerrarEditor();
+  });
   $('#editor-borrar').addEventListener('click', async () => {
     if (!notaAbierta) return;
     const ok = await confirmar({ titulo: '¿Borrar esta nota?', accion: 'Borrar', destructivo: true });
