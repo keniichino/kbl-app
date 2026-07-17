@@ -7,6 +7,7 @@ export const SPECIES = {
   25: { name: 'Arbolito',    emoji: '🌳', light: '#c8f59a', mid: '#7ed957', deep: '#3d9433' },
   50: { name: 'Roble',       emoji: '🌲', light: '#a5ecbc', mid: '#4dc973', deep: '#1f7a44' },
   90: { name: 'Gran Sakura', emoji: '🌺', light: '#ffc9e4', mid: '#f272b6', deep: '#ad3d7f' },
+  120: { name: 'Bonsái',     emoji: '🪴', light: '#7fa88f', mid: '#335c48', deep: '#15281f' },
 };
 
 const WITHERED = { light: '#d8cbb2', mid: '#a89878', deep: '#6e6047' };

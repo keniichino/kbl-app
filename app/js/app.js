@@ -29,7 +29,7 @@ let tickInterval = null;
 let wakeLock = null;
 
 // ---------- Isla 3D creciendo (reemplaza el árbol 2D mientras corre la sesión) ----------
-const ISLA_POR_MIN = { 15: 'flor', 25: 'arbolito', 50: 'roble', 90: 'sakura' };
+const ISLA_POR_MIN = { 15: 'flor', 25: 'arbolito', 50: 'roble', 90: 'sakura', 120: 'bonsai' };
 const scene3d = $('#scene-3d');
 const focoViewer = initViewer360(scene3d, { frames: 36 });
 const focoCanvas = scene3d.querySelector('canvas');
@@ -267,6 +267,7 @@ const ISLAS = [
   { key: 'flor',     nombre: 'Flor',     emoji: '🌷' },
   { key: 'arbolito', nombre: 'Arbolito', emoji: '🌳' },
   { key: 'roble',    nombre: 'Roble',    emoji: '🌲' },
+  { key: 'bonsai',   nombre: 'Bonsái',   emoji: '🪴' },
 ];
 
 function initIslas() {

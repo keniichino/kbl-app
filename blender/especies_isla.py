@@ -15,8 +15,8 @@ argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
 ESPECIE = "arbolito"
 if "--especie" in argv:
     ESPECIE = argv[argv.index("--especie") + 1]
-assert ESPECIE in ("arbolito", "roble", "flor", "sakura"), ESPECIE
-SEEDS_DEF = {"arbolito": 21, "roble": 31, "flor": 41, "sakura": 11}
+assert ESPECIE in ("arbolito", "roble", "flor", "sakura", "bonsai"), ESPECIE
+SEEDS_DEF = {"arbolito": 21, "roble": 31, "flor": 41, "sakura": 11, "bonsai": 51}
 SEED = SEEDS_DEF[ESPECIE]
 if "--seed" in argv:
     SEED = int(argv[argv.index("--seed") + 1])
@@ -59,6 +59,9 @@ PAL = {
     "sakura":   dict(light=srgb2lin("ffc9e4"), mid=srgb2lin("f272b6"),
                      deep=srgb2lin("ad3d7f"), bark=srgb2lin("3a2820"),
                      rim=(1.0, 0.62, 0.82)),
+    "bonsai":   dict(light=srgb2lin("7fa88f"), mid=srgb2lin("335c48"),
+                     deep=srgb2lin("15281f"), bark=srgb2lin("4d4235"),
+                     rim=(0.72, 0.92, 0.86)),
 }[ESPECIE]
 COL_CENTRO  = srgb2lin("ffd76e")
 COL_PASTO   = srgb2lin("6cc464")
@@ -109,6 +112,7 @@ RAMP_CFG = {  # soften, pos_mid, pos_light, discreto
     "roble":    (0.90, 0.30, 0.85, True),   # tri-tono franco, sin pastel
     "flor":     (0.80, 0.38, 0.88, False),
     "sakura":   (0.42, 0.40, 0.78, False),  # mismo ramp que make_blossom original
+    "bonsai":   (0.88, 0.30, 0.80, True),   # verde bosque musgoso, discreto (sin pastel)
 }[ESPECIE]
 MAT_COPA    = ramp3_mat("copa", PAL["deep"], PAL["mid"], PAL["light"],
                         soften=RAMP_CFG[0], pos_mid=RAMP_CFG[1],
@@ -205,7 +209,7 @@ tex_fine.noise_depth = 2
 
 clusters = []
 
-def add_cluster(center, radius, squash=(0.7, 1.0)):
+def add_cluster(center, radius, squash=(0.7, 1.0), mat=None, disp_scale=1.0):
     bpy.ops.mesh.primitive_ico_sphere_add(subdivisions=3, radius=radius,
                                           location=center)
     ob = bpy.context.active_object
@@ -217,14 +221,29 @@ def add_cluster(center, radius, squash=(0.7, 1.0)):
                          random.uniform(0, 6.28))
     mod = ob.modifiers.new("disp", 'DISPLACE')
     mod.texture = tex
-    mod.strength = radius * 0.38
+    mod.strength = radius * 0.38 * disp_scale
     mod2 = ob.modifiers.new("disp_fino", 'DISPLACE')
     mod2.texture = tex_fine
-    mod2.strength = radius * 0.10
-    ob.data.materials.append(MAT_COPA)
+    mod2.strength = radius * 0.10 * disp_scale
+    ob.data.materials.append(mat if mat is not None else MAT_COPA)
     bpy.ops.object.shade_smooth()
     clusters.append((Vector(center), radius))
     return ob
+
+def add_pad(center, radius, tilt=0.0, mat=None):
+    """Almohadilla de follaje aplanada y escalonada (rasgo distintivo del bonsai
+    podado): 2 anillos de racimos chatos + nucleo, sin una bocha dominante, para
+    que el conjunto lea como un disco continuo y no como una pelota apachurrada."""
+    add_cluster(center, radius * 0.34, squash=(0.16, 0.22), mat=mat, disp_scale=0.5)
+    rings = [(radius * 0.40, 6, radius * 0.28), (radius * 0.70, 8, radius * 0.22)]
+    for rr0, n, rad in rings:
+        for k in range(n):
+            ang = k * (2 * math.pi / n) + random.uniform(-0.15, 0.15)
+            rr = rr0 * random.uniform(0.9, 1.08)
+            z = math.sin(ang + tilt) * radius * 0.10 + random.uniform(-0.02, 0.02)
+            c = center + Vector((math.cos(ang) * rr, math.sin(ang) * rr, z))
+            add_cluster(c, rad * random.uniform(0.85, 1.1), squash=(0.16, 0.24),
+                       mat=mat, disp_scale=0.5)
 
 # ------------------------------------------------------------------ hojita / petalo suelto (quad kite chico)
 def make_quad_mesh(name, w, l, lift, mat):
@@ -555,11 +574,145 @@ def build_sakura():
         scatter_quad(pet_me, Vector((math.cos(ang) * rr,
                                      math.sin(ang) * rr, 0)), grounded=True)
 
+BONSAI_SCALE = 1.95   # escala del arbol (tronco+ramas+almohadillas) para llenar
+                      # el cuadro igual que las otras especies; la decoracion de
+                      # piso (musgo/hojas caidas/piedra zen) queda sin escalar
+                      # para no salirse del radio de la isla.
+
+def build_bonsai():
+    """Bonsai japones: tronco retorcido en S marcada (grueso en la base,
+    corteza rugosa via displace), copas en 5 almohadillas planas y escalonadas
+    a distintas alturas/angulos (no una copa esferica), paleta verde bosque
+    musgoso con un puñado de hojas de acento otonal quemado."""
+    _antes = set(scene.objects)
+
+    cu, trunk_ob = new_tree_curve("tronco", MAT_BARK)
+    cu.bevel_resolution = 8    # mas resolucion que el default (5): la corteza
+    cu.resolution_u = 16       # rugosa via displace necesita mas geometria para leerse
+    # curva en S bien marcada: grueso en la base, se afina y serpentea al subir
+    trunk_pts = [
+        (Vector((0.00,  0.00, 0.00)), 0.34),
+        (Vector((0.20,  0.05, 0.22)), 0.29),
+        (Vector((0.44, -0.07, 0.50)), 0.225),
+        (Vector((0.18, -0.20, 0.82)), 0.175),
+        (Vector((-0.30, -0.06, 1.10)), 0.135),
+        (Vector((-0.42,  0.12, 1.38)), 0.100),
+        (Vector((-0.10,  0.14, 1.62)), 0.078),
+        (Vector((0.18,  0.02, 1.86)), 0.058),
+    ]
+    add_spline(cu, trunk_pts)
+
+    MAT_ACCENT = simple_mat("bonsai_acento", srgb2lin("b3451f"), 0.85)
+
+    def branch_to(anchor, direction, length, r0, up1=-0.02, up2=0.48):
+        """Rama corta que primero cae/se abre (estilo podado) y despues
+        levanta la punta -> silueta clasica que sostiene la almohadilla."""
+        d = Vector(direction).normalized()
+        _, (mid, midd) = grow(cu, anchor, d, length * 0.55, r0, r0 * 0.55,
+                              jitter=0.12, up=up1)
+        _, (tip, tipd) = grow(cu, mid, midd, length * 0.45, r0 * 0.55, r0 * 0.28,
+                              jitter=0.12, up=up2)
+        return tip
+
+    anchors = [
+        (trunk_pts[2][0], ( 0.85,  0.30, -0.05), 0.45, 0.075),
+        (trunk_pts[3][0], (-0.72, -0.26,  0.05), 0.43, 0.062),
+        (trunk_pts[5][0], ( 0.48, -0.62,  0.10), 0.38, 0.050),
+        (trunk_pts[6][0], (-0.55,  0.46,  0.20), 0.32, 0.040),
+    ]
+    # IMPORTANTE: todas las ramas (grow -> cu.splines.new) tienen que crearse
+    # ANTES de convertir el tronco a mesh; si no, quedan en un datablock huerfano
+    # y no se ven (bug detectado en la 1ra iteracion: las ramas no aparecian).
+    pad_centers = [branch_to(a, d, l, r) for a, d, l, r in anchors]
+    pad_centers.append(trunk_pts[-1][0] + Vector((0.08, -0.02, 0.16)))  # apice
+
+    # corteza vieja/rugosa: displace sobre el tronco+ramas ya completos (no solo
+    # en la copa). Displace no aplica a objetos CURVE -> se convierte a MESH.
+    bpy.context.view_layer.objects.active = trunk_ob
+    trunk_ob.select_set(True)
+    bpy.ops.object.convert(target='MESH')
+    trunk_ob = bpy.context.view_layer.objects.active
+    tex_bark = bpy.data.textures.new("bark_rough", 'STUCCI')
+    tex_bark.noise_scale = 0.16
+    tex_bark.turbulence = 6.0
+    mod = trunk_ob.modifiers.new("bark_disp", 'DISPLACE')
+    mod.texture = tex_bark
+    mod.strength = 0.075
+    mod.mid_level = 0.5
+    tex_bark2 = bpy.data.textures.new("bark_fino", 'CLOUDS')
+    tex_bark2.noise_scale = 0.06
+    mod3 = trunk_ob.modifiers.new("bark_disp_fino", 'DISPLACE')
+    mod3.texture = tex_bark2
+    mod3.strength = 0.025
+    bpy.ops.object.shade_smooth()
+    trunk_ob.select_set(False)
+
+    pad_radii = [0.60, 0.54, 0.47, 0.40, 0.33]  # decrecen hacia el apice
+    for i, (c, r) in enumerate(zip(pad_centers, pad_radii)):
+        add_pad(c, r, tilt=i * 1.1)
+
+    # acento otonal: puñado sutil de hojas quemadas cerca del borde de una
+    # almohadilla intermedia (chico, no debe dominar la lectura verde-musgo)
+    acc_pad, acc_r = pad_centers[2], pad_radii[2]
+    for _ in range(6):
+        ang = random.uniform(0, 6.28)
+        rr = acc_r * random.uniform(0.75, 1.05)
+        c = acc_pad + Vector((math.cos(ang) * rr, math.sin(ang) * rr,
+                              random.uniform(0.02, 0.10)))
+        add_cluster(c, random.uniform(0.035, 0.055), squash=(0.5, 0.7),
+                   mat=MAT_ACCENT)
+
+    # todo lo de arriba (tronco+ramas+almohadillas+acento) se agrupa en un root
+    # que se escala como conjunto para llenar el cuadro (el bonsai es mas bajo
+    # y ancho por naturaleza, pero necesita la misma presencia visual).
+    canopy_root = bpy.data.objects.new("bonsai_canopy_root", None)
+    scene.collection.objects.link(canopy_root)
+    for ob in list(scene.objects):
+        if ob not in _antes and ob is not canopy_root and ob.parent is None:
+            ob.parent = canopy_root
+    canopy_root.scale = (BONSAI_SCALE,) * 3
+    _antes = set(scene.objects)   # lo de aca abajo NO se escala (decoracion de piso)
+
+    # hojas otonales sueltas: unas cayendo, otras ya en el pasto (mantillo)
+    hoja_me = make_quad_mesh("hoja_bonsai", 0.045, 0.10, 0.012, MAT_ACCENT)
+    for _ in range(2):
+        ang = random.uniform(0, 6.28)
+        rr = random.uniform(0.4, 1.4)
+        z = random.uniform(0.4, 1.8)
+        scatter_quad(hoja_me, Vector((math.cos(ang) * rr,
+                                      math.sin(ang) * rr, z)), 0.8, 1.2)
+    for _ in range(3):
+        ang = random.uniform(0, 6.28)
+        rr = random.uniform(0.4, 2.1)
+        scatter_quad(hoja_me, Vector((math.cos(ang) * rr,
+                                      math.sin(ang) * rr, 0)), 0.8, 1.2,
+                    grounded=True)
+
+    # musgo al pie del tronco: tufts chatos y oscuros directo sobre el pasto
+    for _ in range(7):
+        ang = random.uniform(0, 6.28)
+        rr = random.uniform(0.30, 1.15)
+        c = Vector((math.cos(ang) * rr, math.sin(ang) * rr,
+                   random.uniform(0.015, 0.035)))
+        add_cluster(c, random.uniform(0.10, 0.18), squash=(0.16, 0.24))
+
+    # piedra zen chata junto a la base (ademas de las piedras genericas de la isla)
+    bpy.ops.mesh.primitive_ico_sphere_add(subdivisions=1, radius=0.16,
+        location=(0.46, 0.34, 0.05))
+    zen = bpy.context.active_object
+    zen.name = "piedra_zen"
+    zen.scale = (1.35, 1.1, 0.34)
+    zen.rotation_euler = (0, 0, random.uniform(0, 3))
+    zen.data.materials.append(MAT_PIEDRA)
+    add_ground_shadow(Vector((0.46, 0.34, 0)), 0.26)
+
+
 {"arbolito": build_arbolito, "roble": build_roble, "flor": build_flor,
- "sakura": build_sakura}[ESPECIE]()
+ "sakura": build_sakura, "bonsai": build_bonsai}[ESPECIE]()
 
 # sombra de contacto donde el tronco/tallo toca el pasto
-TRUNK_SHADOW_R = {"arbolito": 0.30, "roble": 0.55, "flor": 0.22, "sakura": 0.34}[ESPECIE]
+TRUNK_SHADOW_R = {"arbolito": 0.30, "roble": 0.55, "flor": 0.22, "sakura": 0.34,
+                  "bonsai": 0.60}[ESPECIE]
 add_ground_shadow(Vector((0, 0, 0)), TRUNK_SHADOW_R)
 
 # ------------------------------------------------------------------ isla flotante (aprobada, cono 35% mas chato)
@@ -627,7 +780,7 @@ scene.collection.objects.link(pivot)
 for ob in list(scene.objects):
     if ob.type in {'MESH', 'CURVE'} and ob.parent is None:
         ob.parent = pivot
-    elif ob.type == 'EMPTY' and ob.name == "cabeza":
+    elif ob.type == 'EMPTY' and ob.name in ("cabeza", "bonsai_canopy_root"):
         ob.parent = pivot
 
 # ------------------------------------------------------------------ bbox + tris (evaluado)
