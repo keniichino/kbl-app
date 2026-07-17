@@ -39,17 +39,34 @@ function escalaCrecimiento(p) {
   return 0.12 + 0.88 * Math.pow(Math.min(Math.max(p, 0), 1), 0.55);
 }
 
-function mostrarCrecimiento3D(active) {
-  const islaKey = ISLA_POR_MIN[active.durationMin];
-  focoViewer.setSrc(
-    (i) => `assets/360/${islaKey}/${String(i).padStart(2, '0')}.webp`,
-    () => { scene3d.style.display = 'none'; } // sin assets: fallback al SVG de siempre
-  );
+let islaCargada = null; // evita recargar/resetear el giro si la especie no cambió
+
+function cargarIsla3D(durationMin) {
+  const islaKey = ISLA_POR_MIN[durationMin];
+  if (islaKey !== islaCargada) {
+    islaCargada = islaKey;
+    focoViewer.setSrc(
+      (i) => `assets/360/${islaKey}/${String(i).padStart(2, '0')}.webp`,
+      () => { scene3d.style.display = 'none'; islaCargada = null; } // sin assets: fallback al SVG
+    );
+  }
   scene3d.style.display = 'flex';
+}
+
+function mostrarCrecimiento3D(active) {
+  cargarIsla3D(active.durationMin);
+}
+
+// Vista previa en la pantalla de inicio: la isla de la duración elegida,
+// a tamaño fijo (no crece), reemplaza el pasto/semilla 2D de antes.
+function mostrarPreviewIdle() {
+  cargarIsla3D(selectedMin);
+  if (focoCanvas) focoCanvas.style.transform = 'scale(0.62)';
 }
 
 function ocultarCrecimiento3D() {
   scene3d.style.display = 'none';
+  islaCargada = null;
 }
 
 // ---------- Navegación por tabs ----------
@@ -75,6 +92,7 @@ document.querySelectorAll('.chip').forEach(chip => {
     selectedMin = Number(chip.dataset.min);
     document.querySelectorAll('.chip').forEach(c => c.classList.toggle('selected', c === chip));
     updateSpeciesHint();
+    mostrarPreviewIdle();
   });
 });
 
@@ -163,8 +181,8 @@ async function giveUp() {
 }
 
 function resetToIdle() {
-  ocultarCrecimiento3D();
-  renderTree(svg, 0, SPECIES[selectedMin], 'seed');
+  renderTree(svg, 0, SPECIES[selectedMin], 'seed', { soloCielo: true });
+  mostrarPreviewIdle();
   show('idle');
   setPetals(IDLE_PETALS);
   updateSpeciesHint();
@@ -343,7 +361,7 @@ function applyPhase() {
 }
 setInterval(() => {
   applyPhase();
-  if (!tickInterval && !el.idle.hidden) renderTree(svg, 0, SPECIES[selectedMin], 'seed');
+  if (!tickInterval && !el.idle.hidden) renderTree(svg, 0, SPECIES[selectedMin], 'seed', { soloCielo: true });
 }, 5 * 60 * 1000);
 
 async function boot() {
