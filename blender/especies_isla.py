@@ -126,6 +126,31 @@ MAT_PET_SUELTO = simple_mat("petalo_suelto",
                                   zip(PAL["light"], PAL["mid"])), 0.7)
 MAT_CENTRO  = simple_mat("centro_flor", COL_CENTRO, 0.85)
 MAT_TALLO   = simple_mat("tallo", srgb2lin("4aa851"), 0.9)
+MAT_HOJA_CAIDA = simple_mat("hoja_caida",
+                            tuple(0.6 * d + 0.4 * m for d, m in
+                                  zip(PAL["deep"], PAL["mid"])), 0.85)
+
+# ------------------------------------------------------------------ sombra de contacto (AO manual para objetos apoyados)
+MAT_SOMBRA = bpy.data.materials.new("sombra_contacto")
+MAT_SOMBRA.use_nodes = True
+_sb = MAT_SOMBRA.node_tree.nodes["Principled BSDF"]
+_sb.inputs["Base Color"].default_value = (0.0, 0.0, 0.0, 1)
+_sb.inputs["Roughness"].default_value = 1.0
+if "Alpha" in _sb.inputs:
+    _sb.inputs["Alpha"].default_value = 0.30
+MAT_SOMBRA.blend_method = 'BLEND'
+MAT_SOMBRA.surface_render_method = 'BLENDED'
+MAT_SOMBRA.show_transparent_back = False
+MAT_SOMBRA.use_transparent_shadow = True
+
+def add_ground_shadow(loc, radius):
+    """Disco chato semitransparente para dar sensacion de apoyo (contact shadow)."""
+    bpy.ops.mesh.primitive_circle_add(vertices=12, radius=radius, fill_type='NGON',
+                                      location=(loc.x, loc.y, 0.0015))
+    ob = bpy.context.active_object
+    ob.name = "sombra"
+    ob.data.materials.append(MAT_SOMBRA)
+    return ob
 
 # ------------------------------------------------------------------ helpers de arbol (curva NURBS con bevel)
 def new_tree_curve(name, mat):
@@ -185,11 +210,11 @@ def add_cluster(center, radius, squash=(0.7, 1.0)):
                                           location=center)
     ob = bpy.context.active_object
     ob.name = "racimo"
-    ob.scale = (random.uniform(0.85, 1.25),
-                random.uniform(0.85, 1.25),
+    ob.scale = (random.uniform(0.76, 1.34),
+                random.uniform(0.76, 1.34),
                 random.uniform(*squash))
-    ob.rotation_euler = (random.uniform(0, 3), random.uniform(0, 3),
-                         random.uniform(0, 3))
+    ob.rotation_euler = (random.uniform(0, 6.28), random.uniform(0, 6.28),
+                         random.uniform(0, 6.28))
     mod = ob.modifiers.new("disp", 'DISPLACE')
     mod.texture = tex
     mod.strength = radius * 0.38
@@ -204,19 +229,31 @@ def add_cluster(center, radius, squash=(0.7, 1.0)):
 # ------------------------------------------------------------------ hojita / petalo suelto (quad kite chico)
 def make_quad_mesh(name, w, l, lift, mat):
     me = bpy.data.meshes.new(name)
+    # winding invertido a proposito (0,3,2,1) para que la normal quede +Z: al
+    # quedar apoyada casi plana sobre el pasto necesita mostrar la cara de
+    # arriba correctamente iluminada (si no, se ve casi negra a contraluz).
     me.from_pydata([(-w, 0, 0), (0, l * 0.6, lift), (w, 0, 0), (0, -l * 0.4, lift)],
-                   [], [(0, 1, 2, 3)])
+                   [], [(0, 3, 2, 1)])
     me.materials.append(mat)
     return me
 
-def scatter_quad(me, loc, smin=0.8, smax=1.5):
+def scatter_quad(me, loc, smin=0.8, smax=1.5, grounded=False):
+    """grounded=True: lo apoya sobre el pasto (rotacion casi plana + sombra de
+    contacto) en vez de dejarlo flotando a media altura."""
     ob = bpy.data.objects.new(me.name, me)
-    ob.location = loc
-    ob.rotation_euler = (random.uniform(0, 6.28), random.uniform(0, 6.28),
-                         random.uniform(0, 6.28))
     s = random.uniform(smin, smax)
+    if grounded:
+        ob.location = (loc.x, loc.y, random.uniform(0.13, 0.19))
+        ob.rotation_euler = (random.uniform(-0.3, 0.3), random.uniform(-0.3, 0.3),
+                             random.uniform(0, 6.28))
+    else:
+        ob.location = loc
+        ob.rotation_euler = (random.uniform(0, 6.28), random.uniform(0, 6.28),
+                             random.uniform(0, 6.28))
     ob.scale = (s, s, s)
     scene.collection.objects.link(ob)
+    if grounded:
+        add_ground_shadow(Vector((loc.x, loc.y, 0)), radius=max(0.05, s * 0.11))
     return ob
 
 # ------------------------------------------------------------------ ESPECIES
@@ -252,14 +289,20 @@ def build_arbolito():
                         random.uniform(-0.35, 0.35),
                         random.uniform(-0.55, -0.42)))
         add_cluster(c, random.uniform(0.34, 0.42))
-    # 3 hojitas verdes cayendo
+    # hojitas verdes: unas cayendo a media altura, otras ya apoyadas en el pasto
     hoja_me = make_quad_mesh("hojita", 0.045, 0.10, 0.012, MAT_HOJA)
-    for _ in range(3):
+    for _ in range(2):
         ang = random.uniform(0, 6.28)
         rr = random.uniform(0.35, 1.0)
-        z = random.uniform(0.25, 1.3)
+        z = random.uniform(0.35, 1.3)
         scatter_quad(hoja_me, Vector((math.cos(ang) * rr,
                                       math.sin(ang) * rr, z)), 0.9, 1.3)
+    for _ in range(3):
+        ang = random.uniform(0, 6.28)
+        rr = random.uniform(0.4, 2.1)
+        scatter_quad(hoja_me, Vector((math.cos(ang) * rr,
+                                      math.sin(ang) * rr, 0)), 0.9, 1.3,
+                    grounded=True)
 
 def build_roble():
     """Roble imponente: tronco grueso y alto, copa masiva y ancha en dos lobulos."""
@@ -294,25 +337,41 @@ def build_roble():
         c = p + d * random.uniform(0.05, 0.2)
         add_cluster(c, random.uniform(0.42, 0.58))
     # relleno masivo alrededor de ambos lobulos (A mas denso)
+    # spread en Y llevado casi a la par de X (antes *0.8) para que el lobulo
+    # no se vea flaco de perfil (rotacion 90/270 del turntable)
     for lobe, n, spread in ((lobeA, 26, 0.62), (lobeB, 18, 0.55)):
         for _ in range(n):
             c = lobe + Vector((random.gauss(0, spread),
-                               random.gauss(0, spread * 0.8),
+                               random.gauss(0, spread * 0.98),
                                random.gauss(0, spread * 0.62)))
             c.x = max(-1.85, min(1.85, c.x))
-            c.y = max(-1.55, min(1.55, c.y))
+            c.y = max(-1.72, min(1.72, c.y))
             c.z = max(2.1, min(3.90, c.z))
             add_cluster(c, random.uniform(0.40, 0.60))
     # puente entre lobulos (mas bajo, para que se lean los dos lobulos)
     for _ in range(6):
         t = random.uniform(0.3, 0.7)
-        c = lobeA.lerp(lobeB, t) + Vector((0, random.uniform(-0.35, 0.35),
+        c = lobeA.lerp(lobeB, t) + Vector((0, random.uniform(-0.42, 0.42),
                                            random.uniform(-0.25, 0.15)))
         add_cluster(c, random.uniform(0.40, 0.52))
     for _ in range(5):
-        c = Vector((random.uniform(-1.3, 1.3), random.uniform(-0.8, 0.8),
+        c = Vector((random.uniform(-1.3, 1.3), random.uniform(-0.95, 0.95),
                     random.uniform(1.95, 2.35)))
         add_cluster(c, random.uniform(0.36, 0.48))
+    # hojas caidas: color otonal (mezcla deep/mid), unas flotando, otras apoyadas
+    hoja_me = make_quad_mesh("hoja_roble", 0.05, 0.11, 0.012, MAT_HOJA_CAIDA)
+    for _ in range(4):
+        ang = random.uniform(0, 6.28)
+        rr = random.uniform(0.4, 1.4)
+        z = random.uniform(0.4, 1.6)
+        scatter_quad(hoja_me, Vector((math.cos(ang) * rr,
+                                      math.sin(ang) * rr, z)), 0.9, 1.35)
+    for _ in range(5):
+        ang = random.uniform(0, 6.28)
+        rr = random.uniform(0.4, 2.15)
+        scatter_quad(hoja_me, Vector((math.cos(ang) * rr,
+                                      math.sin(ang) * rr, 0)), 0.9, 1.35,
+                    grounded=True)
 
 def build_flor():
     """Flor gigante: tallo curvado con 2 hojas, 8 petalos kite + centro amarillo."""
@@ -360,12 +419,12 @@ def build_flor():
     for k in range(8):
         ob = bpy.data.objects.new("petalo", lut[orden[k]])
         ob.parent = head
-        ob.rotation_euler = (random.uniform(-0.05, 0.05),
-                             random.uniform(-0.10, -0.02),  # leve alzado
+        ob.rotation_euler = (random.uniform(-0.09, 0.09),
+                             random.uniform(-0.16, 0.02),  # leve alzado, mas variado
                              k * (math.pi / 4) + math.pi / 8
-                             + random.uniform(-0.05, 0.05))
-        s = random.uniform(0.96, 1.04)
-        ob.scale = (s, s, s)
+                             + random.uniform(-0.09, 0.09))
+        s = random.uniform(0.88, 1.14)
+        ob.scale = (s, s, s * random.uniform(0.94, 1.06))
         scene.collection.objects.link(ob)
 
     # centro amarillo facetado (esfera achatada, flat shading)
@@ -392,14 +451,20 @@ def build_flor():
         ob.rotation_euler = (tiltx, math.radians(-18), angz)
         scene.collection.objects.link(ob)
 
-    # petalos sueltos cayendo
+    # petalos sueltos: algunos cayendo a media altura, otros ya en el pasto
     pet_small = make_quad_mesh("petalo_suelto", 0.05, 0.12, 0.015, MAT_PET_SUELTO)
-    for _ in range(6):
+    for _ in range(3):
         ang = random.uniform(0, 6.28)
         rr = random.uniform(0.35, 1.5)
-        z = random.uniform(0.2, 1.7)
+        z = random.uniform(0.3, 1.7)
         scatter_quad(pet_small, Vector((math.cos(ang) * rr,
                                         math.sin(ang) * rr, z)), 0.9, 1.4)
+    for _ in range(4):
+        ang = random.uniform(0, 6.28)
+        rr = random.uniform(0.4, 2.2)
+        scatter_quad(pet_small, Vector((math.cos(ang) * rr,
+                                        math.sin(ang) * rr, 0)), 0.9, 1.4,
+                    grounded=True)
 
 def build_sakura():
     """Sakura dreamy: port 1:1 del arbol de arbol_isla.py (seed 11).
@@ -478,15 +543,24 @@ def build_sakura():
         d = Vector((random.gauss(0, 1), random.gauss(0, 1),
                     abs(random.gauss(0, 0.9)))).normalized()
         scatter_quad(pet_me, c + d * r * random.uniform(1.0, 1.12))
-    for _ in range(36):
+    for _ in range(20):
         ang = random.uniform(0, 6.28)
         rr = random.uniform(0.25, canopy_r * 0.7)
-        z = random.uniform(0.12, canopy_lo + 0.4)
+        z = random.uniform(0.35, canopy_lo + 0.4)
         scatter_quad(pet_me, Vector((math.cos(ang) * rr,
                                      math.sin(ang) * rr, z)))
+    for _ in range(16):
+        ang = random.uniform(0, 6.28)
+        rr = random.uniform(0.3, canopy_r * 0.92)
+        scatter_quad(pet_me, Vector((math.cos(ang) * rr,
+                                     math.sin(ang) * rr, 0)), grounded=True)
 
 {"arbolito": build_arbolito, "roble": build_roble, "flor": build_flor,
  "sakura": build_sakura}[ESPECIE]()
+
+# sombra de contacto donde el tronco/tallo toca el pasto
+TRUNK_SHADOW_R = {"arbolito": 0.30, "roble": 0.55, "flor": 0.22, "sakura": 0.34}[ESPECIE]
+add_ground_shadow(Vector((0, 0, 0)), TRUNK_SHADOW_R)
 
 # ------------------------------------------------------------------ isla flotante (aprobada, cono 35% mas chato)
 bpy.ops.mesh.primitive_cylinder_add(vertices=22, radius=GRASS_R, depth=GRASS_TH,
@@ -532,6 +606,7 @@ for _ in range(24):
     fl = bpy.context.active_object
     fl.name = "flor_isla"
     fl.data.materials.append(MAT_FLOR_B if random.random() < 0.5 else MAT_FLOR_R)
+    add_ground_shadow(Vector((fl.location.x, fl.location.y, 0)), r * 1.3)
 for _ in range(3):
     ang = random.uniform(0, 6.28)
     rr = random.uniform(GRASS_R * 0.4, GRASS_R * 0.85)
@@ -544,6 +619,7 @@ for _ in range(3):
                 random.uniform(0.5, 0.8))
     st.rotation_euler = (0, 0, random.uniform(0, 3))
     st.data.materials.append(MAT_PIEDRA)
+    add_ground_shadow(Vector((st.location.x, st.location.y, 0)), r * 1.5)
 
 # ------------------------------------------------------------------ pivot
 pivot = bpy.data.objects.new("pivot", None)
@@ -623,6 +699,16 @@ scene.view_settings.view_transform = 'Standard'
 scene.render.resolution_x = 800
 scene.render.resolution_y = 1000
 scene.eevee.taa_render_samples = SAMPLES
+
+# AO real (EEVEE Next "fast GI" en modo solo-oclusion) para que los racimos de
+# la copa y las florcitas/hojas apoyadas dejen de verse flotando
+scene.eevee.use_fast_gi = True
+scene.eevee.fast_gi_method = 'AMBIENT_OCCLUSION_ONLY'
+scene.eevee.fast_gi_distance = 0.09
+scene.eevee.fast_gi_quality = 1.0
+scene.eevee.fast_gi_ray_count = 16
+scene.eevee.use_raytracing = True
+scene.eevee.ray_tracing_options.resolution_scale = '1'
 
 os.makedirs(TT_DIR, exist_ok=True)
 

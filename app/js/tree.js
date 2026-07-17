@@ -160,9 +160,19 @@ function celestial(phase) {
 }
 
 // Escena "dreamy": cuerpo celeste, colinas con bruma atmosférica y pasto texturado
-function ground(phase) {
+function ground(phase, soloCielo = false) {
   const P = PHASES[phase];
   const night = phase === 'noche';
+
+  if (soloCielo) {
+    // Modo "creciendo en 3D": solo cielo + colinas lejanas de fondo,
+    // sin loma ni pasto en primer plano (los reemplaza la isla 3D encima).
+    return `
+      ${celestial(phase)}
+      <path d="M 0 338 Q 70 296 160 330 T 400 322 L 400 430 L 0 430 Z" fill="${P.far}" opacity=".8"/>
+      <path d="M 0 352 Q 120 310 250 346 T 400 340 L 400 430 L 0 430 Z" fill="${P.mid}" opacity=".85"/>`;
+  }
+
   // Pasto: hebras y flores con posiciones pseudo-aleatorias deterministas
   let grass = '';
   for (let i = 0; i < 64; i++) {
@@ -225,9 +235,15 @@ function sceneDefs(phase) {
  * @param {object} species  entrada de SPECIES
  * @param {string} mood     'grow' | 'joy' | 'dead' | 'seed'
  */
-export function renderTree(svg, p, species, mood = 'grow') {
+export function renderTree(svg, p, species, mood = 'grow', opts = {}) {
   const sp = mood === 'dead' ? { ...species, ...WITHERED } : species;
   const groundY = 388;
+
+  if (opts.soloCielo) {
+    const phase = dayPhase();
+    svg.innerHTML = sceneDefs(phase) + ground(phase, true);
+    return;
+  }
 
   let tree = '';
   if (mood === 'seed' || p < 0.04) {

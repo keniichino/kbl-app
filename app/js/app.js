@@ -28,6 +28,30 @@ let selectedMin = 25;
 let tickInterval = null;
 let wakeLock = null;
 
+// ---------- Isla 3D creciendo (reemplaza el árbol 2D mientras corre la sesión) ----------
+const ISLA_POR_MIN = { 15: 'flor', 25: 'arbolito', 50: 'roble', 90: 'sakura' };
+const scene3d = $('#scene-3d');
+const focoViewer = initViewer360(scene3d, { frames: 36 });
+const focoCanvas = scene3d.querySelector('canvas');
+
+// Curva de crecimiento: arranca chico (no invisible) y acelera al principio
+function escalaCrecimiento(p) {
+  return 0.12 + 0.88 * Math.pow(Math.min(Math.max(p, 0), 1), 0.55);
+}
+
+function mostrarCrecimiento3D(active) {
+  const islaKey = ISLA_POR_MIN[active.durationMin];
+  focoViewer.setSrc(
+    (i) => `assets/360/${islaKey}/${String(i).padStart(2, '0')}.webp`,
+    () => { scene3d.style.display = 'none'; } // sin assets: fallback al SVG de siempre
+  );
+  scene3d.style.display = 'flex';
+}
+
+function ocultarCrecimiento3D() {
+  scene3d.style.display = 'none';
+}
+
 // ---------- Navegación por tabs ----------
 document.querySelectorAll('.tab').forEach(tab => {
   tab.addEventListener('click', () => {
@@ -66,6 +90,7 @@ function startSession() {
   setActive(session);
   requestWakeLock();
   show('running');
+  mostrarCrecimiento3D(session);
   setPetals([SPECIES[selectedMin].light + 'dd', '#ffffffbb']);
   tick();
   tickInterval = setInterval(tick, 1000);
@@ -79,7 +104,12 @@ function tick() {
   const elapsed = Date.now() - active.startTs;
   const p = Math.min(elapsed / totalMs, 1);
 
-  renderTree(svg, p, SPECIES[active.durationMin], 'grow');
+  if (scene3d.style.display !== 'none') {
+    renderTree(svg, p, SPECIES[active.durationMin], 'grow', { soloCielo: true });
+    if (focoCanvas) focoCanvas.style.transform = `scale(${escalaCrecimiento(p).toFixed(3)})`;
+  } else {
+    renderTree(svg, p, SPECIES[active.durationMin], 'grow');
+  }
 
   const leftMs = Math.max(totalMs - elapsed, 0);
   const mm = String(Math.floor(leftMs / 60000)).padStart(2, '0');
@@ -102,6 +132,7 @@ function completeSession(active) {
   const sp = SPECIES[active.durationMin];
   addSession({ id: crypto.randomUUID(), ...active, completed: true });
 
+  ocultarCrecimiento3D();
   renderTree(svg, 1, sp, 'joy');
   el.doneTitle.textContent = `¡Tu ${sp.name} creció! ${sp.emoji}`;
   el.doneSub.textContent = `${active.durationMin} minutos de foco puro. Ya está en tu bosque.`;
@@ -124,6 +155,7 @@ async function giveUp() {
   setActive(null);
   addSession({ id: crypto.randomUUID(), ...active, completed: false });
 
+  ocultarCrecimiento3D();
   renderTree(svg, 0.6, SPECIES[active.durationMin], 'dead');
   el.doneTitle.textContent = 'El árbol se marchitó 🥀';
   el.doneSub.textContent = 'Queda en el bosque como recordatorio. La próxima lo lográs.';
@@ -131,6 +163,7 @@ async function giveUp() {
 }
 
 function resetToIdle() {
+  ocultarCrecimiento3D();
   renderTree(svg, 0, SPECIES[selectedMin], 'seed');
   show('idle');
   setPetals(IDLE_PETALS);
@@ -282,6 +315,7 @@ function onRemoteChange(kind) {
       // Plantaron desde el otro dispositivo: acá también crece
       show('running');
       requestWakeLock();
+      mostrarCrecimiento3D(active);
       tick();
       tickInterval = setInterval(tick, 1000);
     } else if (!active && tickInterval) {
@@ -292,6 +326,12 @@ function onRemoteChange(kind) {
   }
   if (document.querySelector('#view-bosque').classList.contains('active')) {
     renderBosque();
+  }
+  if (kind === 'gastos' && document.querySelector('#view-gastos').classList.contains('active')) {
+    renderGastos();
+  }
+  if (kind === 'notas' && document.querySelector('#view-notas').classList.contains('active')) {
+    renderNotas();
   }
 }
 
@@ -321,6 +361,7 @@ async function boot() {
     } else {
       show('running');
       requestWakeLock();
+      mostrarCrecimiento3D(active);
       tick();
       tickInterval = setInterval(tick, 1000);
     }

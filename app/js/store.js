@@ -102,15 +102,19 @@ export async function initSync(onRemoteChange) {
     const pull = Promise.all([
       supabase.from('foco_sessions').select('*').order('start_ts'),
       supabase.from('foco_active').select('*').eq('id', 1).maybeSingle(),
+      supabase.from('gastos').select('*'),
+      supabase.from('notas').select('*'),
     ]);
     const timeout = new Promise((_, rej) => setTimeout(rej, 3500, 'timeout'));
-    const [sess, act] = await Promise.race([pull, timeout]);
+    const [sess, act, gastosR, notasR] = await Promise.race([pull, timeout]);
     if (sess.data) write(KEYS.sessions, sess.data.map(fromRemote));
     if (!act.error) {
       const local = getActive();
       if (act.data?.start_ts) applyRemoteActive(act.data);
       else if (local) setActive(local); // sesión iniciada offline: gana lo local y se empuja
     }
+    if (gastosR.data) mergeListPull('gastos', KEYS.gastos, gastosR.data, fromRemoteGasto, toRemoteGasto);
+    if (notasR.data) mergeListPull('notas', KEYS.notas, notasR.data, fromRemoteNota, toRemoteNota);
   } catch {
     /* offline: seguimos con localStorage */
   }
@@ -132,11 +136,33 @@ export async function initSync(onRemoteChange) {
       notify('active');
     })
     .subscribe();
+
+  suscribirLista('gastos', KEYS.gastos, fromRemoteGasto, 'gastos');
+  suscribirLista('notas', KEYS.notas, fromRemoteNota, 'notas');
 }
 
 // --- Gastos: [{ id, monto, descripcion, categoria, fecha, ts }] ---
-// Por ahora SOLO local (device-privado). El sync a Supabase se activa
-// junto con Auth + RLS: plata sin login sería legible públicamente.
+// Sync con Supabase (misma tabla abierta que Foco, sin login todavía).
+// Nota de privacidad: hasta que exista Auth+RLS, cualquiera con la anon
+// key pública del repo podría leer esta tabla. Aceptado por Keni para
+// uso personal; se cierra con candado real cuando entren más usuarios.
+
+const toRemoteGasto = (g) => ({
+  id: g.id,
+  monto: g.monto,
+  descripcion: g.descripcion || null,
+  categoria: g.categoria,
+  fecha: g.fecha,
+  created_at: new Date(g.ts).toISOString(),
+});
+const fromRemoteGasto = (r) => ({
+  id: r.id,
+  monto: Number(r.monto),
+  descripcion: r.descripcion || '',
+  categoria: r.categoria,
+  fecha: r.fecha,
+  ts: Date.parse(r.created_at),
+});
 
 export function getGastos() {
   return read(KEYS.gastos, []);
@@ -146,15 +172,30 @@ export function addGasto(gasto) {
   const all = getGastos();
   all.push(gasto);
   write(KEYS.gastos, all);
+  supabase.from('gastos').upsert(toRemoteGasto(gasto), { onConflict: 'id' }).then(() => {}, () => {});
   return gasto;
 }
 
 export function removeGasto(id) {
   write(KEYS.gastos, getGastos().filter((g) => g.id !== id));
+  supabase.from('gastos').delete().eq('id', id).then(() => {}, () => {});
 }
 
 // --- Notas: [{ id, titulo, contenido, updated }] ---
-// Local por ahora; sync con Auth + RLS (misma razón que gastos).
+// Mismo modelo de sync que Gastos (ver nota de privacidad arriba).
+
+const toRemoteNota = (n) => ({
+  id: n.id,
+  titulo: n.titulo || null,
+  contenido: n.contenido || null,
+  updated_at: new Date(n.updated).toISOString(),
+});
+const fromRemoteNota = (r) => ({
+  id: r.id,
+  titulo: r.titulo || '',
+  contenido: r.contenido || '',
+  updated: Date.parse(r.updated_at),
+});
 
 export function getNotas() {
   return read(KEYS.notas, []);
@@ -164,11 +205,48 @@ export function upsertNota(nota) {
   const all = getNotas().filter((n) => n.id !== nota.id);
   all.push(nota);
   write(KEYS.notas, all);
+  supabase.from('notas').upsert(toRemoteNota(nota), { onConflict: 'id' }).then(() => {}, () => {});
   return nota;
 }
 
 export function removeNota(id) {
   write(KEYS.notas, getNotas().filter((n) => n.id !== id));
+  supabase.from('notas').delete().eq('id', id).then(() => {}, () => {});
+}
+
+// --- Sync genérico para tablas-lista (gastos, notas): merge local+remoto
+// al arrancar, y aplica INSERT/UPDATE/DELETE en vivo del otro dispositivo.
+
+function mergeListPull(tableName, key, remoteRows, fromRemote, toRemote) {
+  const local = read(key, []);
+  const remoteIds = new Set(remoteRows.map((r) => r.id));
+  const localIds = new Set(local.map((l) => l.id));
+
+  // Ítems creados offline en este dispositivo: empujarlos al servidor
+  for (const l of local) {
+    if (!remoteIds.has(l.id)) {
+      supabase.from(tableName).upsert(toRemote(l), { onConflict: 'id' }).then(() => {}, () => {});
+    }
+  }
+
+  const soloLocal = local.filter((l) => !remoteIds.has(l.id));
+  write(key, [...soloLocal, ...remoteRows.map(fromRemote)]);
+}
+
+function suscribirLista(tableName, key, fromRemote, kind) {
+  supabase
+    .channel(`kbl-${tableName}`)
+    .on('postgres_changes', { event: '*', schema: 'public', table: tableName }, (p) => {
+      const all = read(key, []);
+      if (p.eventType === 'DELETE') {
+        write(key, all.filter((x) => x.id !== p.old.id));
+      } else {
+        const item = fromRemote(p.new);
+        write(key, [...all.filter((x) => x.id !== item.id), item]);
+      }
+      notify(kind);
+    })
+    .subscribe();
 }
 
 // --- Estadísticas derivadas ---

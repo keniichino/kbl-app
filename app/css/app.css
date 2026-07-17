@@ -81,6 +81,25 @@ body[data-phase="noche"] .tabbar { background: linear-gradient(150deg, rgba(255,
   pointer-events: none;
 }
 
+/* Isla 3D creciendo durante la sesión de foco (reemplaza el árbol 2D) */
+.scene-3d {
+  position: absolute;
+  inset: 0;
+  display: none; /* activado por JS mientras hay sesión corriendo */
+  align-items: flex-end;
+  justify-content: center;
+  padding-bottom: 6%;
+  touch-action: none;
+  cursor: grab;
+}
+.scene-3d.grabbing { cursor: grabbing; }
+.scene-3d canvas {
+  height: 76%;
+  width: auto;
+  transform-origin: bottom center;
+  will-change: transform;
+}
+
 /* Vignette sutil para profundidad */
 .scene::after {
   content: '';
