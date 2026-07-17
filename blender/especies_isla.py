@@ -21,7 +21,15 @@ SEED = SEEDS_DEF[ESPECIE]
 if "--seed" in argv:
     SEED = int(argv[argv.index("--seed") + 1])
 TEST_MODE = "--test" in argv
-SAMPLES = 32 if TEST_MODE else 64
+TEST_ANGLE = 0.0
+if "--angle" in argv:
+    TEST_ANGLE = float(argv[argv.index("--angle") + 1])
+SAMPLES = 32 if TEST_MODE else 160
+if "--samples" in argv:
+    SAMPLES = int(argv[argv.index("--samples") + 1])
+ENGINE = "eevee"
+if "--engine" in argv:
+    ENGINE = argv[argv.index("--engine") + 1]
 
 OUT_DIR = r"G:\Mi unidad\KBL APP Personal\blender"
 TT_DIR = os.path.join(OUT_DIR, "turntable_" + ESPECIE)
@@ -306,6 +314,8 @@ tex_fine.noise_scale = 0.16
 tex_fine.noise_depth = 2
 
 clusters = []
+cluster_objs = []   # objetos bpy paralelos a `clusters` (para poder unirlos en
+                    # un hull de emision de particulas por especie/lobulo)
 
 def add_cluster(center, radius, squash=(0.7, 1.0), mat=None, disp_scale=1.0):
     bpy.ops.mesh.primitive_ico_sphere_add(subdivisions=3, radius=radius,
@@ -326,13 +336,137 @@ def add_cluster(center, radius, squash=(0.7, 1.0), mat=None, disp_scale=1.0):
     ob.data.materials.append(mat if mat is not None else MAT_COPA)
     bpy.ops.object.shade_smooth()
     clusters.append((Vector(center), radius))
+    cluster_objs.append(ob)
     return ob
 
-def add_pad(center, radius, tilt=0.0, mat=None):
+# ------------------------------------------------------------------ follaje real: instancias de hoja/petalo
+# Tecnica central de esta ronda: en vez de que la copa sea la superficie lisa
+# de unas pocas esferas grandes (se lee como "nube de espuma"), las esferas
+# pasan a ser un HULL INVISIBLE (solo define volumen/silueta + les da a las
+# hojas una superficie irregular donde apoyarse) y la superficie que SI se ve
+# es un sistema de particulas HAIR que instancia una malla de hoja/petalo
+# chica miles de veces, con variacion real de escala/rotacion/color por
+# instancia (color vía Object Info > Random en el material, igual que ya se
+# hacia para los racimos -> se hereda gratis en cada hoja).
+def make_leaf_mesh(name, L, W, mat, curl=0.16, sections=None):
+    """Hoja/petalo chico: reusa el perfil curvo de make_petal_mesh (angosto en
+    la base, ensancha, se redondea en la punta, con canal longitudinal) -> se
+    lee como una hoja real facetada, no como un kite plano."""
+    return make_petal_mesh(name, L, W, mat, channel=curl, sections=sections)
+
+def _new_particle_settings(name):
+    ps = bpy.data.particles.new(name)
+    return ps
+
+def add_leaf_particles(emitter_ob, leaf_ob, count, size, size_random=0.38,
+                       rot_random=0.45, seed=1, name="follaje"):
+    """Cubre la superficie de `emitter_ob` (un hull de racimos ya unidos) con
+    `count` instancias de `leaf_ob`, orientadas ~tangentes a la superficie
+    (rotation_mode NOR) con spin libre (phase_factor_random) y variacion real
+    de escala. El emisor se oculta (show_instancer_for_render/viewport=False)
+    asi solo se ve el follaje instanciado, nunca la esfera lisa de abajo."""
+    bpy.context.view_layer.objects.active = emitter_ob
+    for ob in bpy.context.selected_objects:
+        ob.select_set(False)
+    emitter_ob.select_set(True)
+    bpy.ops.object.particle_system_add()
+    psys = emitter_ob.particle_systems[-1]
+    psys.name = name
+    s = psys.settings
+    s.name = name
+    s.type = 'HAIR'
+    s.use_advanced_hair = True
+    s.count = count
+    s.hair_length = 1.0
+    s.render_type = 'OBJECT'
+    s.instance_object = leaf_ob
+    s.particle_size = size
+    s.size_random = size_random
+    s.use_rotations = True
+    s.rotation_mode = 'NOR'
+    s.rotation_factor_random = rot_random
+    s.phase_factor_random = 2.0
+    s.emit_from = 'FACE'
+    s.distribution = 'RAND'
+    s.use_modifier_stack = True   # que el emisor tome la forma YA con el displace
+    psys.seed = seed
+    emitter_ob.show_instancer_for_render = False
+    emitter_ob.show_instancer_for_viewport = False
+    return psys
+
+def make_blossom_mesh(name, mat_petal, mat_center, petal_L=0.030, petal_W=0.024,
+                      n_petals=5, center_r=0.010):
+    """Florcita de sakura: rosetta de n_petals petalos curvos + centro chico,
+    unidos en un solo mesh para poder instanciarla cientos de veces con
+    add_leaf_particles (asi las flores se leen como flores individuales de 5
+    petalos agrupadas en racimos, no como una nube rosa uniforme)."""
+    tmp = []
+    ang0 = random.uniform(0, 2 * math.pi)
+    for k in range(n_petals):
+        ang = ang0 + k * (2 * math.pi / n_petals)
+        pm = make_petal_mesh(f"{name}_p{k}", petal_L, petal_W, mat_petal,
+                             channel=0.05, inset=0.0)
+        ob = bpy.data.objects.new(f"{name}_p{k}_ob", pm)
+        scene.collection.objects.link(ob)
+        ob.rotation_euler = (math.radians(26), 0, ang)
+        tmp.append(ob)
+    bpy.ops.mesh.primitive_ico_sphere_add(subdivisions=1, radius=center_r,
+                                          location=(0, 0, center_r * 0.5))
+    cen = bpy.context.active_object
+    cen.data.materials.append(mat_center)
+    tmp.append(cen)
+    for o in bpy.context.selected_objects:
+        o.select_set(False)
+    for o in tmp:
+        o.select_set(True)
+    bpy.context.view_layer.objects.active = tmp[0]
+    bpy.ops.object.join()
+    blossom = bpy.context.view_layer.objects.active
+    blossom.name = name
+    blossom.hide_render = True
+    blossom.hide_viewport = True
+    return blossom
+
+def join_hull(obs, name="copa_hull"):
+    """Une una lista de objetos-racimo (esferas con displace) en un solo mesh
+    que sirve de hull/emisor de particulas. Devuelve None si la lista viene
+    vacia (nada para unir)."""
+    obs = [o for o in obs if o is not None and o.name in bpy.data.objects]
+    if not obs:
+        return None
+    for ob in bpy.context.selected_objects:
+        ob.select_set(False)
+    for ob in obs:
+        ob.select_set(True)
+    bpy.context.view_layer.objects.active = obs[0]
+    if len(obs) > 1:
+        bpy.ops.object.join()
+    hull = bpy.context.view_layer.objects.active
+    hull.name = name
+    return hull
+
+_bonsai_needle_cache = {}
+
+def get_bonsai_needle(mat):
+    """Hojita chica y alargada tipo aguja/escama (identidad de bonsai podado):
+    se cachea por material para reusar el mismo objeto de instancia en las 5
+    almohadillas sin recrear la malla cada vez."""
+    key = id(mat)
+    if key not in _bonsai_needle_cache:
+        me = make_leaf_mesh("bonsai_needle", L=0.050, W=0.020, mat=mat, curl=0.06)
+        ob = bpy.data.objects.new("bonsai_needle_ob", me)
+        scene.collection.objects.link(ob)
+        ob.hide_render = True
+        ob.hide_viewport = True
+        _bonsai_needle_cache[key] = ob
+    return _bonsai_needle_cache[key]
+
+def add_pad(center, radius, tilt=0.0, mat=None, seed_extra=0):
     """Almohadilla de follaje aplanada y escalonada (rasgo distintivo del bonsai
-    podado): nucleo + 3 anillos de racimos chatos MAS densos y superpuestos que
-    antes, con borde irregular (no un disco perfecto), para que lea como una
-    nube de follaje llena en vez de un plato con agujeros."""
+    podado): nucleo + 3 anillos de racimos chatos que definen el volumen
+    (hull), unidos y ocultos para que en vez de leerse como discos lisos cada
+    almohadilla sea una nube densa de cientos de hojitas chicas."""
+    start = len(cluster_objs)
     add_cluster(center, radius * 0.38, squash=(0.20, 0.27), mat=mat, disp_scale=0.5)
     rings = [(radius * 0.36, 7, radius * 0.32), (radius * 0.64, 10, radius * 0.25),
              (radius * 0.80, 7, radius * 0.16)]
@@ -345,6 +479,16 @@ def add_pad(center, radius, tilt=0.0, mat=None):
             c = center + Vector((math.cos(ang) * rr, math.sin(ang) * rr, z))
             add_cluster(c, rad * random.uniform(0.85, 1.15), squash=(0.20, 0.30),
                        mat=mat, disp_scale=0.5)
+    group = cluster_objs[start:]
+    hull = join_hull(group, name="bonsai_pad_hull")
+    needle_ob = get_bonsai_needle(mat if mat is not None else MAT_COPA)
+    # Densidad subida ~3x: la primera pasada quedo demasiado rala/pelada
+    # (se veian huecos grandes de tronco entre las almohadillas).
+    count = max(450, round(radius * radius * 4200))
+    add_leaf_particles(hull, needle_ob, count=count, size=1.15,
+                       size_random=0.35, rot_random=0.55,
+                       seed=SEED + start + seed_extra, name="agujas")
+    return hull
 
 # ------------------------------------------------------------------ hojita / petalo suelto (quad kite chico)
 def make_quad_mesh(name, w, l, lift, mat):
@@ -398,7 +542,10 @@ def build_arbolito():
                       disp2=0.011, scale2=0.08)
 
     # copa: 3 masas asimetricas alrededor de C, cada una con su propio racimo
-    # nucleo + anillo parcial -> silueta organica, no una esfera perfecta
+    # nucleo + anillo parcial -> silueta organica, no una esfera perfecta.
+    # Estas esferas YA NO se ven: pasan a ser el hull/volumen sobre el que se
+    # instancian miles de hojitas chicas (add_leaf_particles mas abajo).
+    hull_start = len(cluster_objs)
     C = Vector((0, 0, 2.05))
     lobe_ang = random.uniform(0, math.pi * 2)
     lobes = [  # (offset desde C, factor de escala, cant. de racimos del anillo)
@@ -422,7 +569,20 @@ def build_arbolito():
         c = C + Vector((random.uniform(-0.4, 0.4), random.uniform(-0.4, 0.4),
                         random.uniform(-0.6, -0.42)))
         add_cluster(c, random.uniform(0.32, 0.40))
-    # hojitas verdes: unas cayendo a media altura, otras ya apoyadas en el pasto
+
+    # follaje real: la copa pasa de "pocas esferas grandes" a cientos de
+    # hojitas individuales con curvatura, variacion de tamaño/rotacion y 2-3
+    # tonos (heredado del ramp de MAT_COPA via Object Info > Random).
+    hull = join_hull(cluster_objs[hull_start:], "arbolito_copa_hull")
+    hoja_copa = make_leaf_mesh("hoja_copa_arbolito", L=0.105, W=0.068, mat=MAT_COPA, curl=0.14)
+    hoja_copa_ob = bpy.data.objects.new("hoja_copa_arbolito_ob", hoja_copa)
+    scene.collection.objects.link(hoja_copa_ob)
+    hoja_copa_ob.hide_render = True
+    hoja_copa_ob.hide_viewport = True
+    add_leaf_particles(hull, hoja_copa_ob, count=850, size=1.0,
+                       size_random=0.38, rot_random=0.42, seed=SEED)
+
+    # hojitas verdes sueltas: unas cayendo a media altura, otras ya apoyadas en el pasto
     hoja_me = make_quad_mesh("hojita", 0.045, 0.10, 0.012, MAT_HOJA)
     for _ in range(2):
         ang = random.uniform(0, 6.28)
@@ -488,7 +648,9 @@ def build_roble():
                  jitter=0.3, up=0.08, tips=tips)
     add_bark_displace(trunk_ob, disp1=0.045, scale1=0.13, turb1=6.5,
                       disp2=0.015, scale2=0.05)
-    # clusters en puntas
+    # clusters en puntas (estas esferas pasan a ser el hull de la copa: el
+    # follaje visible es la instancia masiva de hojas de roble mas abajo)
+    hull_start = len(cluster_objs)
     for (p, d) in tips:
         c = p + d * random.uniform(0.05, 0.2)
         add_cluster(c, random.uniform(0.42, 0.58))
@@ -514,6 +676,24 @@ def build_roble():
         c = Vector((random.uniform(-1.3, 1.3), random.uniform(-0.95, 0.95),
                     random.uniform(1.95, 2.35)))
         add_cluster(c, random.uniform(0.36, 0.48))
+    # follaje real: la copa masiva pasa de "esferas lisas" a miles de hojas de
+    # roble (silueta lobulada real, no un ovalo generico) instanciadas sobre
+    # el hull de racimos ya posicionado.
+    hull = join_hull(cluster_objs[hull_start:], "roble_copa_hull")
+    hoja_roble_copa = make_leaf_mesh(
+        "hoja_copa_roble", L=0.135, W=0.095, mat=MAT_COPA, curl=0.12,
+        sections=[
+            (0.00, 0.06, 0.00), (0.10, 0.42, 0.03), (0.20, 0.24, 0.06),
+            (0.32, 0.52, 0.10), (0.44, 0.26, 0.14), (0.56, 0.56, 0.15),
+            (0.68, 0.28, 0.13), (0.82, 0.40, 0.06), (1.00, 0.10, -0.08),
+        ])
+    hoja_roble_copa_ob = bpy.data.objects.new("hoja_copa_roble_ob", hoja_roble_copa)
+    scene.collection.objects.link(hoja_roble_copa_ob)
+    hoja_roble_copa_ob.hide_render = True
+    hoja_roble_copa_ob.hide_viewport = True
+    add_leaf_particles(hull, hoja_roble_copa_ob, count=1900, size=1.0,
+                       size_random=0.36, rot_random=0.45, seed=SEED)
+
     # bellotas colgando del borde bajo-frontal de la copa (visibles contra el
     # cielo, no enterradas entre el follaje) -> detalle de identidad del roble
     acorn_pool = [(c, r) for c, r in clusters if c.y < -0.10 and c.z < 3.15]
@@ -710,7 +890,11 @@ def build_sakura():
     # arbol joven de tronco liso con solo un poco de caracter)
     add_bark_displace(trunk_ob, disp1=0.020, scale1=0.22, turb1=3.0,
                       disp2=0.009, scale2=0.07)
-    # copa: racimos chicos sobre ramas medias + grandes en puntas + nube extra
+    # copa: racimos chicos sobre ramas medias + grandes en puntas + nube extra.
+    # Estas esferas ya NO se ven directo (antes eran la "nube rosa uniforme"
+    # tapando todo): pasan a ser un hull de emision disperso -> las florcitas
+    # instanciadas dejan huecos entre racimos por donde se ven las ramas.
+    hull_start = len(cluster_objs)
     cluster_centers = []
     for sp, end in level1_ends:
         for (p, d, r) in sp[-2:]:
@@ -739,7 +923,28 @@ def build_sakura():
         add_cluster(c, random.uniform(0.32 * 0.8, 0.32 * 1.1))
     canopy_r = max(math.hypot(c.x, c.y) + r for c, r in clusters)
     canopy_lo = min(c.z - r for c, r in clusters)
-    # petalos instanciados (130 sobre copa + 36 cayendo = 166)
+
+    # follaje real: las esferas-racimo se unen en un hull invisible y la copa
+    # que SI se ve es un sistema de particulas de florcitas de 5 petalos (una
+    # por racimo, no todo el arbol junto, para que la densidad varie de forma
+    # organica y los huecos entre racimos dejen ver ramas).
+    hull_group = cluster_objs[hull_start:]
+    blossom = make_blossom_mesh("sakura_blossom", MAT_COPA, MAT_CENTRO,
+                                petal_L=0.032, petal_W=0.026, center_r=0.009)
+    # cada racimo original pasa a ser su propio mini-hull con su propia
+    # densidad de flores proporcional a su radio (los racimos grandes de
+    # puntas de rama llevan mas flores que los chicos de relleno)
+    for i, ob in enumerate(hull_group):
+        center, radius = clusters[hull_start + i]
+        count = max(10, round(radius * radius * 620))
+        add_leaf_particles(ob, blossom, count=count, size=1.0,
+                           size_random=0.42, rot_random=0.6,
+                           seed=SEED + i, name=f"flores_{i}")
+        ob.show_instancer_for_render = False
+        ob.show_instancer_for_viewport = False
+
+    # petalos sueltos cayendo/apoyados (siguen siendo utiles como detalle de
+    # "viento"; las florcitas de la copa ya no se instancian aca)
     mat_pet = simple_mat("petalo_sakura",
                          tuple(0.6 * l + 0.4 for l in PAL["light"]), 0.7)
     pet_me = bpy.data.meshes.new("petalo")
@@ -747,11 +952,6 @@ def build_sakura():
         [(-0.035, 0, 0), (0, 0.024, 0.007), (0.035, 0, 0), (0, -0.024, 0.007)],
         [], [(0, 1, 2, 3)])
     pet_me.materials.append(mat_pet)
-    for _ in range(130):
-        c, r = random.choice(clusters)
-        d = Vector((random.gauss(0, 1), random.gauss(0, 1),
-                    abs(random.gauss(0, 0.9)))).normalized()
-        scatter_quad(pet_me, c + d * r * random.uniform(1.0, 1.12))
     for _ in range(20):
         ang = random.uniform(0, 6.28)
         rr = random.uniform(0.25, canopy_r * 0.7)
@@ -841,16 +1041,20 @@ def build_bonsai():
     for i, (c, r) in enumerate(zip(pad_centers, pad_radii)):
         add_pad(c, r, tilt=i * 1.1)
 
-    # acento otonal: puñado sutil de hojas quemadas cerca del borde de una
-    # almohadilla intermedia (chico, no debe dominar la lectura verde-musgo)
+    # acento otonal: puñado sutil de hojitas quemadas individuales (no esferas
+    # solidas -> a esta escala una esfera lee como bollo liso; una hojita
+    # facetada se integra con la textura del resto de la almohadilla) cerca
+    # del borde de una almohadilla intermedia (chico, no debe dominar la
+    # lectura verde-musgo)
     acc_pad, acc_r = pad_centers[2], pad_radii[2]
-    for _ in range(6):
+    hoja_acento_me = make_leaf_mesh("hoja_acento_bonsai", L=0.075, W=0.05,
+                                    mat=MAT_ACCENT, curl=0.10)
+    for _ in range(10):
         ang = random.uniform(0, 6.28)
-        rr = acc_r * random.uniform(0.75, 1.05)
+        rr = acc_r * random.uniform(0.70, 1.08)
         c = acc_pad + Vector((math.cos(ang) * rr, math.sin(ang) * rr,
-                              random.uniform(0.02, 0.10)))
-        add_cluster(c, random.uniform(0.035, 0.055), squash=(0.5, 0.7),
-                   mat=MAT_ACCENT)
+                              random.uniform(0.02, 0.14)))
+        scatter_quad(hoja_acento_me, c, 0.8, 1.3)
 
     # todo lo de arriba (tronco+ramas+almohadillas+acento) se agrupa en un root
     # que se escala como conjunto para llenar el cuadro (el bonsai es mas bajo
@@ -1036,26 +1240,40 @@ cam.location = (0, -CAM_DIST, CAM_Z)
 cam.rotation_euler = (math.radians(90), 0, 0)
 
 # ------------------------------------------------------------------ render settings
-scene.render.engine = 'BLENDER_EEVEE'
 scene.render.film_transparent = True
 scene.view_settings.view_transform = 'Standard'
 scene.render.resolution_x = 800
 scene.render.resolution_y = 1000
-scene.eevee.taa_render_samples = SAMPLES
 
-# AO real (EEVEE Next "fast GI" en modo solo-oclusion) para que los racimos de
-# la copa y las florcitas/hojas apoyadas dejen de verse flotando
-scene.eevee.use_fast_gi = True
-scene.eevee.fast_gi_method = 'AMBIENT_OCCLUSION_ONLY'
-scene.eevee.fast_gi_distance = 0.09
-scene.eevee.fast_gi_quality = 1.0
-scene.eevee.fast_gi_ray_count = 16
-scene.eevee.use_raytracing = True
-scene.eevee.ray_tracing_options.resolution_scale = '1'
+if ENGINE == "cycles":
+    scene.render.engine = 'CYCLES'
+    scene.cycles.samples = SAMPLES
+    scene.cycles.use_denoising = True
+    scene.cycles.device = 'GPU'
+    try:
+        prefs = bpy.context.preferences.addons['cycles'].preferences
+        prefs.get_devices()
+        prefs.compute_device_type = 'OPTIX'
+        for d in prefs.devices:
+            d.use = (d.type in ('OPTIX',))
+    except Exception as e:
+        print("=== cycles GPU setup failed, falling back to CPU:", e)
+else:
+    scene.render.engine = 'BLENDER_EEVEE'
+    scene.eevee.taa_render_samples = SAMPLES
+    # AO real (EEVEE Next "fast GI" en modo solo-oclusion) para que los racimos
+    # de la copa y las florcitas/hojas apoyadas dejen de verse flotando
+    scene.eevee.use_fast_gi = True
+    scene.eevee.fast_gi_method = 'AMBIENT_OCCLUSION_ONLY'
+    scene.eevee.fast_gi_distance = 0.09
+    scene.eevee.fast_gi_quality = 1.0
+    scene.eevee.fast_gi_ray_count = 16
+    scene.eevee.use_raytracing = True
+    scene.eevee.ray_tracing_options.resolution_scale = '1'
 
 os.makedirs(TT_DIR, exist_ok=True)
 
-def check_border_alpha(path):
+def check_border_alpha(path, quiet=False):
     img = bpy.data.images.load(path)
     w, h = img.size
     px = img.pixels[:]
@@ -1071,15 +1289,18 @@ def check_border_alpha(path):
             v = a(x, y)
             if v > mx: mx = v
     bpy.data.images.remove(img)
-    print("=== BORDER ALPHA MAX:", round(mx, 3), ("CLIPPING!" if mx > 0.01 else "ok"))
+    if not quiet:
+        print("=== BORDER ALPHA MAX:", round(mx, 3), ("CLIPPING!" if mx > 0.01 else "ok"))
+    return mx
 
 scene.render.image_settings.file_format = 'PNG'
 scene.render.image_settings.color_mode = 'RGBA'
 if TEST_MODE:
+    pivot.rotation_euler.z = math.radians(TEST_ANGLE)
     scene.render.filepath = os.path.join(OUT_DIR, f"test_{ESPECIE}_{SEED}.png")
     bpy.ops.render.render(write_still=True)
     check_border_alpha(scene.render.filepath)
-    print("=== TEST RENDER:", scene.render.filepath)
+    print("=== TEST RENDER:", scene.render.filepath, "angle:", TEST_ANGLE)
 else:
     # hero PNG (frame 0)
     scene.render.filepath = os.path.join(TT_DIR, "hero.png")
@@ -1089,11 +1310,18 @@ else:
     # turntable WEBP
     scene.render.image_settings.file_format = 'WEBP'
     scene.render.image_settings.quality = 85
+    worst_alpha = 0.0
+    worst_frame = -1
     for i in range(36):
         pivot.rotation_euler.z = math.radians(i * 10)
         scene.render.filepath = os.path.join(TT_DIR, f"{i:02d}.webp")
         bpy.ops.render.render(write_still=True)
+        a = check_border_alpha(scene.render.filepath, quiet=True)
+        if a > worst_alpha:
+            worst_alpha, worst_frame = a, i
     print("=== TURNTABLE OK", round(time.time() - t0, 1), "s total")
+    print("=== TURNTABLE WORST BORDER ALPHA:", round(worst_alpha, 3),
+          "frame", worst_frame, ("CLIPPING!" if worst_alpha > 0.01 else "ok"))
     pivot.rotation_euler.z = 0
     bpy.ops.wm.save_as_mainfile(
         filepath=os.path.join(OUT_DIR, f"{ESPECIE}_isla.blend"))
