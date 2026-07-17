@@ -7,7 +7,7 @@
 #   blender.exe --background --python especies_isla.py -- --especie roble
 #   blender.exe --background --python especies_isla.py -- --especie flor --seed 7
 #   blender.exe --background --python especies_isla.py -- --especie sakura
-import bpy, math, random, sys, time, os
+import bpy, bmesh, math, random, sys, time, os
 from mathutils import Vector
 
 # ------------------------------------------------------------------ args
@@ -44,6 +44,100 @@ def srgb2lin(hexstr):
         c = int(hexstr[i:i+2], 16) / 255.0
         out.append(c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4)
     return tuple(out)
+
+def add_bark_displace(trunk_ob, disp1=0.045, scale1=0.15, turb1=5.0,
+                      disp2=0.016, scale2=0.055):
+    """Corteza con caracter (tecnica validada en el bonsai): convierte la curva
+    del tronco a mesh y le suma 2 capas de displace (rugosidad media + fino)
+    para que deje de leerse como un tubo liso de un solo color."""
+    bpy.context.view_layer.objects.active = trunk_ob
+    trunk_ob.select_set(True)
+    bpy.ops.object.convert(target='MESH')
+    trunk_ob = bpy.context.view_layer.objects.active
+    tex1 = bpy.data.textures.new("bark_rough_" + trunk_ob.name, 'STUCCI')
+    tex1.noise_scale = scale1
+    tex1.turbulence = turb1
+    m1 = trunk_ob.modifiers.new("bark_disp", 'DISPLACE')
+    m1.texture = tex1
+    m1.strength = disp1
+    m1.mid_level = 0.5
+    tex2 = bpy.data.textures.new("bark_fino_" + trunk_ob.name, 'CLOUDS')
+    tex2.noise_scale = scale2
+    m2 = trunk_ob.modifiers.new("bark_disp_fino", 'DISPLACE')
+    m2.texture = tex2
+    m2.strength = disp2
+    bpy.ops.object.shade_smooth()
+    trunk_ob.select_set(False)
+    return trunk_ob
+
+def fresnel_mix_mat(name, col_face, col_edge, rough=0.55, ior=1.35, transmission=0.12):
+    """Base + Fresnel mezclando 2 colores: da un fake de translucidez/subsurface
+    barato para petalos y hojas finas (los bordes a contraluz se ven mas claros,
+    como si dejaran pasar la luz)."""
+    m = bpy.data.materials.new(name)
+    m.use_nodes = True
+    nt = m.node_tree
+    bsdf = nt.nodes["Principled BSDF"]
+    bsdf.inputs["Roughness"].default_value = rough
+    fres = nt.nodes.new("ShaderNodeFresnel")
+    fres.inputs["IOR"].default_value = ior
+    mix = nt.nodes.new("ShaderNodeMixRGB")
+    mix.inputs["Color1"].default_value = (*col_face, 1)
+    mix.inputs["Color2"].default_value = (*col_edge, 1)
+    nt.links.new(fres.outputs["Fac"], mix.inputs["Fac"])
+    nt.links.new(mix.outputs["Color"], bsdf.inputs["Base Color"])
+    for key in ("Transmission Weight", "Transmission"):
+        if key in bsdf.inputs:
+            bsdf.inputs[key].default_value = transmission
+            break
+    return m
+
+def _recalc_normals_up(me):
+    """Bmesh recalc + fuerza a que la cara promedio quede orientada +Z (las
+    mallas de petalo/hoja se arman a mano y la orientacion no es trivial)."""
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    avg_z = sum(f.normal.z for f in bm.faces) / max(1, len(bm.faces))
+    if avg_z < 0:
+        bmesh.ops.reverse_faces(bm, faces=bm.faces)
+    bm.to_mesh(me)
+    bm.free()
+
+def make_petal_mesh(name, L, W, mat, channel=0.05, sections=None, inset=0.0):
+    """Petalo con perfil real (angosto en la base, ensancha, se redondea en la
+    punta) + una leve concavidad tipo canal a lo largo (3 verts por seccion)
+    y una curvatura longitudinal que sube y despues cae en la punta -> lee
+    como un petalo curvo/facetado, no como un kite plano."""
+    if sections is None:
+        sections = [
+            (0.00, 0.10, 0.00),
+            (0.16, 0.55, 0.045),
+            (0.36, 1.00, 0.095),
+            (0.58, 0.88, 0.070),
+            (0.80, 0.50, -0.010),
+            (1.00, 0.22, -0.095),
+        ]
+    verts = []
+    for (t, hwf, zf) in sections:
+        x = inset + t * L
+        hw = hwf * W * 0.5
+        z = zf * L
+        verts.append((x, -hw, z))
+        verts.append((x, 0.0, z + channel * W))
+        verts.append((x, hw, z))
+    faces = []
+    n = len(sections)
+    for i in range(n - 1):
+        i0, i1 = i * 3, (i + 1) * 3
+        faces.append((i0, i1, i1 + 1, i0 + 1))
+        faces.append((i0 + 1, i1 + 1, i1 + 2, i0 + 2))
+    me = bpy.data.meshes.new(name)
+    me.from_pydata(verts, [], faces)
+    me.update()
+    _recalc_normals_up(me)
+    me.materials.append(mat)
+    return me
 
 # paletas exactas de la app
 PAL = {
@@ -124,10 +218,14 @@ MAT_TIERRA_D= simple_mat("tierra_oscura", COL_TIERRA_D, 1.0)
 MAT_PIEDRA  = simple_mat("piedra", COL_PIEDRA, 0.9)
 MAT_FLOR_B  = simple_mat("flor_blanca", (0.9, 0.9, 0.92), 0.8)
 MAT_FLOR_R  = simple_mat("flor_rosa", srgb2lin("ffc9e4"), 0.8)
-MAT_HOJA    = simple_mat("hojita", COL_HOJA, 0.85)
-MAT_PET_SUELTO = simple_mat("petalo_suelto",
+MAT_HOJA    = fresnel_mix_mat("hojita", COL_HOJA,
+                              tuple(c + (1 - c) * 0.55 for c in COL_HOJA),
+                              rough=0.7, transmission=0.10)
+MAT_PET_SUELTO = fresnel_mix_mat("petalo_suelto",
                             tuple(0.55 * l + 0.45 * m for l, m in
-                                  zip(PAL["light"], PAL["mid"])), 0.7)
+                                  zip(PAL["light"], PAL["mid"])),
+                            tuple(c + (1 - c) * 0.5 for c in PAL["light"]),
+                            rough=0.65, transmission=0.12)
 MAT_CENTRO  = simple_mat("centro_flor", COL_CENTRO, 0.85)
 MAT_TALLO   = simple_mat("tallo", srgb2lin("4aa851"), 0.9)
 MAT_HOJA_CAIDA = simple_mat("hoja_caida",
@@ -161,8 +259,8 @@ def new_tree_curve(name, mat):
     cu = bpy.data.curves.new(name, 'CURVE')
     cu.dimensions = '3D'
     cu.bevel_depth = 1.0
-    cu.bevel_resolution = 5
-    cu.resolution_u = 12
+    cu.bevel_resolution = 7    # geometria de sobra para sostener el displace de corteza
+    cu.resolution_u = 14
     cu.fill_mode = 'FULL'
     ob = bpy.data.objects.new(name, cu)
     scene.collection.objects.link(ob)
@@ -232,17 +330,20 @@ def add_cluster(center, radius, squash=(0.7, 1.0), mat=None, disp_scale=1.0):
 
 def add_pad(center, radius, tilt=0.0, mat=None):
     """Almohadilla de follaje aplanada y escalonada (rasgo distintivo del bonsai
-    podado): 2 anillos de racimos chatos + nucleo, sin una bocha dominante, para
-    que el conjunto lea como un disco continuo y no como una pelota apachurrada."""
-    add_cluster(center, radius * 0.34, squash=(0.16, 0.22), mat=mat, disp_scale=0.5)
-    rings = [(radius * 0.40, 6, radius * 0.28), (radius * 0.70, 8, radius * 0.22)]
+    podado): nucleo + 3 anillos de racimos chatos MAS densos y superpuestos que
+    antes, con borde irregular (no un disco perfecto), para que lea como una
+    nube de follaje llena en vez de un plato con agujeros."""
+    add_cluster(center, radius * 0.38, squash=(0.20, 0.27), mat=mat, disp_scale=0.5)
+    rings = [(radius * 0.36, 7, radius * 0.32), (radius * 0.64, 10, radius * 0.25),
+             (radius * 0.80, 7, radius * 0.16)]
     for rr0, n, rad in rings:
+        ring_ang0 = random.uniform(-0.3, 0.3)
         for k in range(n):
-            ang = k * (2 * math.pi / n) + random.uniform(-0.15, 0.15)
-            rr = rr0 * random.uniform(0.9, 1.08)
-            z = math.sin(ang + tilt) * radius * 0.10 + random.uniform(-0.02, 0.02)
+            ang = ring_ang0 + k * (2 * math.pi / n) + random.uniform(-0.20, 0.20)
+            rr = rr0 * random.uniform(0.88, 1.08)
+            z = math.sin(ang + tilt) * radius * 0.10 + random.uniform(-0.03, 0.03)
             c = center + Vector((math.cos(ang) * rr, math.sin(ang) * rr, z))
-            add_cluster(c, rad * random.uniform(0.85, 1.1), squash=(0.16, 0.24),
+            add_cluster(c, rad * random.uniform(0.85, 1.15), squash=(0.20, 0.30),
                        mat=mat, disp_scale=0.5)
 
 # ------------------------------------------------------------------ hojita / petalo suelto (quad kite chico)
@@ -277,8 +378,10 @@ def scatter_quad(me, loc, smin=0.8, smax=1.5, grounded=False):
 
 # ------------------------------------------------------------------ ESPECIES
 def build_arbolito():
-    """Arbol clasico joven: copa redonda compacta, mas chico que la sakura."""
-    cu, _ = new_tree_curve("tronco", MAT_BARK)
+    """Arbol joven: copa en 3 masas asimetricas fusionadas (una principal +
+    una secundaria volcada a un lado + un acento alto), en vez de un anillo
+    perfecto de racimos que lee como una pelota pinchada en un palito."""
+    cu, trunk_ob = new_tree_curve("tronco", MAT_BARK)
     tips = []
     # tronco corto
     _, (top, topd) = grow(cu, Vector((0, 0, 0)), Vector((0.06, -0.03, 1)),
@@ -291,23 +394,34 @@ def build_arbolito():
         d = Vector((math.cos(ang) * math.sin(tilt),
                     math.sin(ang) * math.sin(tilt), math.cos(tilt)))
         grow(cu, top, d, 0.75, 0.055, 0.02, jitter=0.22, up=0.12, tips=tips)
-    # copa: blob esferico compacto alrededor de C
+    add_bark_displace(trunk_ob, disp1=0.028, scale1=0.22, turb1=3.2,
+                      disp2=0.011, scale2=0.08)
+
+    # copa: 3 masas asimetricas alrededor de C, cada una con su propio racimo
+    # nucleo + anillo parcial -> silueta organica, no una esfera perfecta
     C = Vector((0, 0, 2.05))
-    add_cluster(C + Vector((0, 0, 0.02)), 0.74)
-    for k in range(7):
-        ang = k * (2 * math.pi / 7) + random.uniform(-0.22, 0.22)
-        rr = random.uniform(0.55, 0.70)
-        c = C + Vector((math.cos(ang) * rr, math.sin(ang) * rr,
-                        random.uniform(-0.12, 0.18)))
-        add_cluster(c, random.uniform(0.42, 0.52))
-    add_cluster(C + Vector((random.uniform(-0.15, 0.15),
-                            random.uniform(-0.15, 0.15), 0.60)),
-                random.uniform(0.44, 0.52))
+    lobe_ang = random.uniform(0, math.pi * 2)
+    lobes = [  # (offset desde C, factor de escala, cant. de racimos del anillo)
+        (Vector((math.cos(lobe_ang) * 0.10, math.sin(lobe_ang) * 0.10, 0.10)), 1.00, 3.5),
+        (Vector((math.cos(lobe_ang + 2.35) * 0.62, math.sin(lobe_ang + 2.35) * 0.52, -0.26)), 0.68, 3),
+        (Vector((math.cos(lobe_ang - 2.05) * 0.40, math.sin(lobe_ang - 2.05) * 0.34, 0.56)), 0.50, 2),
+        (Vector((math.cos(lobe_ang + 1.05) * 0.80, math.sin(lobe_ang + 1.05) * 0.68, -0.02)), 0.36, 1.5),
+    ]
+    for offset, sc, n_f in lobes:
+        n = max(4, round(n_f * 2))
+        center = C + offset
+        add_cluster(center, 0.62 * sc)
+        ring_ang0 = random.uniform(0, math.pi * 2)
+        for k in range(n):
+            ang = ring_ang0 + k * (2 * math.pi / n) + random.uniform(-0.30, 0.30)
+            rr = random.uniform(0.42, 0.66) * sc
+            c = center + Vector((math.cos(ang) * rr, math.sin(ang) * rr,
+                                 random.uniform(-0.16, 0.20) * sc))
+            add_cluster(c, random.uniform(0.36, 0.50) * sc)
     for _ in range(2):
-        c = C + Vector((random.uniform(-0.35, 0.35),
-                        random.uniform(-0.35, 0.35),
-                        random.uniform(-0.55, -0.42)))
-        add_cluster(c, random.uniform(0.34, 0.42))
+        c = C + Vector((random.uniform(-0.4, 0.4), random.uniform(-0.4, 0.4),
+                        random.uniform(-0.6, -0.42)))
+        add_cluster(c, random.uniform(0.32, 0.40))
     # hojitas verdes: unas cayendo a media altura, otras ya apoyadas en el pasto
     hoja_me = make_quad_mesh("hojita", 0.045, 0.10, 0.012, MAT_HOJA)
     for _ in range(2):
@@ -323,9 +437,30 @@ def build_arbolito():
                                       math.sin(ang) * rr, 0)), 0.9, 1.3,
                     grounded=True)
 
+MAT_BELLOTA     = simple_mat("bellota", srgb2lin("c9a25b"), 0.75)
+MAT_BELLOTA_CAP = simple_mat("bellota_cap", srgb2lin("52402c"), 0.85)
+
+def add_acorn(loc, scale=1.0):
+    """Bellota chata: nuez faceteada + capuchon conico, detalle de identidad
+    del roble."""
+    bpy.ops.mesh.primitive_ico_sphere_add(subdivisions=1, radius=0.055 * scale,
+                                          location=(loc.x, loc.y, loc.z))
+    nut = bpy.context.active_object
+    nut.name = "bellota"
+    nut.scale = (1, 1, 1.3)
+    nut.data.materials.append(MAT_BELLOTA)
+    bpy.ops.mesh.primitive_cone_add(vertices=8, radius1=0.062 * scale,
+                                    radius2=0.012 * scale, depth=0.05 * scale,
+                                    location=(loc.x, loc.y, loc.z + 0.05 * scale))
+    cap = bpy.context.active_object
+    cap.name = "bellota_cap"
+    cap.data.materials.append(MAT_BELLOTA_CAP)
+
 def build_roble():
-    """Roble imponente: tronco grueso y alto, copa masiva y ancha en dos lobulos."""
-    cu, _ = new_tree_curve("tronco", MAT_BARK)
+    """Roble imponente: tronco grueso y alto (corteza rugosa via displace),
+    copa masiva y ancha en dos lobulos, con bellotas colgando como detalle
+    de identidad de especie."""
+    cu, trunk_ob = new_tree_curve("tronco", MAT_BARK)
     tips = []
     _, (top, topd) = grow(cu, Vector((0, 0, 0)), Vector((0.05, 0.02, 1)),
                           1.35, 0.27, 0.155, jitter=0.10, up=0.20)
@@ -351,6 +486,8 @@ def build_roble():
                               random.uniform(0.1, 0.5)))).normalized()
             grow(cu, p, dd, 0.8, max(r * 0.55, 0.025), 0.015,
                  jitter=0.3, up=0.08, tips=tips)
+    add_bark_displace(trunk_ob, disp1=0.045, scale1=0.13, turb1=6.5,
+                      disp2=0.015, scale2=0.05)
     # clusters en puntas
     for (p, d) in tips:
         c = p + d * random.uniform(0.05, 0.2)
@@ -365,7 +502,7 @@ def build_roble():
                                random.gauss(0, spread * 0.62)))
             c.x = max(-1.85, min(1.85, c.x))
             c.y = max(-1.72, min(1.72, c.y))
-            c.z = max(2.1, min(3.90, c.z))
+            c.z = max(2.1, min(3.78, c.z))
             add_cluster(c, random.uniform(0.40, 0.60))
     # puente entre lobulos (mas bajo, para que se lean los dos lobulos)
     for _ in range(6):
@@ -377,6 +514,13 @@ def build_roble():
         c = Vector((random.uniform(-1.3, 1.3), random.uniform(-0.95, 0.95),
                     random.uniform(1.95, 2.35)))
         add_cluster(c, random.uniform(0.36, 0.48))
+    # bellotas colgando del borde bajo-frontal de la copa (visibles contra el
+    # cielo, no enterradas entre el follaje) -> detalle de identidad del roble
+    acorn_pool = [(c, r) for c, r in clusters if c.y < -0.10 and c.z < 3.15]
+    for c, r in random.sample(acorn_pool, min(6, len(acorn_pool))):
+        pos = c + Vector((random.uniform(-0.08, 0.08), random.uniform(-0.12, -0.02),
+                          -(r * 1.05 + 0.07)))
+        add_acorn(pos, scale=random.uniform(0.9, 1.2))
     # hojas caidas: color otonal (mezcla deep/mid), unas flotando, otras apoyadas
     hoja_me = make_quad_mesh("hoja_roble", 0.05, 0.11, 0.012, MAT_HOJA_CAIDA)
     for _ in range(4):
@@ -393,7 +537,11 @@ def build_roble():
                     grounded=True)
 
 def build_flor():
-    """Flor gigante: tallo curvado con 2 hojas, 8 petalos kite + centro amarillo."""
+    """Flor compuesta a 2 anillos (estilo dalia/zinnia): petalos con perfil
+    curvo real (angostos en la base, redondeados en la punta, con canal
+    longitudinal) en vez de kites planos. Anillo exterior grande y caido,
+    anillo interior mas chico y erguido para que se note la superposicion
+    y el volumen. Centro faceteado con textura de florecitas concentricas."""
     # tallo
     cu, _ = new_tree_curve("tallo", MAT_TALLO)
     stem_pts = [(Vector((0, 0, 0)), 0.10),
@@ -410,51 +558,88 @@ def build_flor():
     head.rotation_euler = (tilt, 0, 0)
     scene.collection.objects.link(head)
 
-    # petalo kite grande (apunta a +X local, con leve curvatura hacia arriba)
-    L, W = 1.24, 0.50
-    pet_me = bpy.data.meshes.new("petalo_kite")
-    pet_me.from_pydata(
-        [(0.14, 0, 0.02),
-         (0.14 + L * 0.42, W, 0.07),
-         (0.14 + L, 0, 0.16),
-         (0.14 + L * 0.42, -W, 0.07),
-         (0.14 + L * 0.42, 0, 0.03)],   # vertice central para leve concavidad
-        [], [(0, 1, 4), (1, 2, 4), (2, 3, 4), (3, 0, 4)])
-    # colores explicitos por petalo (mayoria mid, toques light y un deep)
-    mat_p_light = simple_mat("petalo_light", PAL["light"], 0.85)
-    mat_p_mid   = simple_mat("petalo_mid", PAL["mid"], 0.85)
-    mat_p_deep  = simple_mat("petalo_deep",
-                             tuple(0.55 * d + 0.45 * m for d, m in
-                                   zip(PAL["deep"], PAL["mid"])), 0.85)
-    orden = [mat_p_mid, mat_p_light, mat_p_mid, mat_p_light,
-             mat_p_mid, mat_p_deep, mat_p_mid, mat_p_light]
-    meshes_pet = []
-    for mat in (mat_p_mid, mat_p_light, mat_p_deep):
-        me = pet_me.copy()
-        me.materials.append(mat)
-        meshes_pet.append(me)
-    lut = {mat_p_mid: meshes_pet[0], mat_p_light: meshes_pet[1],
-           mat_p_deep: meshes_pet[2]}
-    for k in range(8):
-        ob = bpy.data.objects.new("petalo", lut[orden[k]])
+    # colores de petalo con fake-translucidez (fresnel mezclando 2 tonos: mas
+    # claro/calido en el borde, como si la luz pasara por el tejido fino)
+    def petal_variant(name, base_col, rim_boost=0.55):
+        rim = tuple(c + (1 - c) * rim_boost for c in base_col)
+        return fresnel_mix_mat(name, base_col, rim, rough=0.5, ior=1.4,
+                               transmission=0.16)
+    mat_p_mid  = petal_variant("petalo_mid", PAL["mid"], 0.55)
+    mat_p_light = petal_variant("petalo_light", PAL["light"], 0.35)
+    mat_p_deep = petal_variant("petalo_deep",
+                               tuple(0.55 * d + 0.45 * m for d, m in
+                                     zip(PAL["deep"], PAL["mid"])), 0.6)
+
+    # anillo exterior: petalos grandes, caidos hacia afuera
+    L_OUT, W_OUT, INSET_OUT, N_OUT = 1.22, 0.60, 0.20, 8
+    outer_mesh_lut = {mat: make_petal_mesh(f"petalo_outer_{i}", L_OUT, W_OUT,
+                                           mat, channel=0.055, inset=INSET_OUT)
+                      for i, mat in enumerate((mat_p_mid, mat_p_light, mat_p_deep))}
+    outer_pattern = [mat_p_mid, mat_p_light, mat_p_mid, mat_p_deep,
+                     mat_p_mid, mat_p_light, mat_p_mid, mat_p_light]
+    base_ang = random.uniform(0, math.pi * 2)
+    for k in range(N_OUT):
+        mat = outer_pattern[k % len(outer_pattern)]
+        ob = bpy.data.objects.new("petalo_outer", outer_mesh_lut[mat])
         ob.parent = head
-        ob.rotation_euler = (random.uniform(-0.09, 0.09),
-                             random.uniform(-0.16, 0.02),  # leve alzado, mas variado
-                             k * (math.pi / 4) + math.pi / 8
-                             + random.uniform(-0.09, 0.09))
-        s = random.uniform(0.88, 1.14)
-        ob.scale = (s, s, s * random.uniform(0.94, 1.06))
+        ob.rotation_euler = (random.uniform(-0.10, 0.10),
+                             random.uniform(-0.42, -0.20),   # caido hacia afuera
+                             base_ang + k * (2 * math.pi / N_OUT)
+                             + random.uniform(-0.07, 0.07))
+        s = random.uniform(0.90, 1.12)
+        ob.scale = (s, s, s * random.uniform(0.95, 1.08))
         scene.collection.objects.link(ob)
 
-    # centro amarillo facetado (esfera achatada, flat shading)
-    bpy.ops.mesh.primitive_ico_sphere_add(subdivisions=2, radius=0.34,
+    # anillo interior: mas chico y erguido -> se ve anidado entre los de afuera
+    L_IN, W_IN, INSET_IN, N_IN = 0.94, 0.50, 0.09, 6
+    inner_mesh_lut = {mat: make_petal_mesh(f"petalo_inner_{i}", L_IN, W_IN,
+                                           mat, channel=0.06, inset=INSET_IN)
+                      for i, mat in enumerate((mat_p_light, mat_p_mid))}
+    inner_pattern = [mat_p_light, mat_p_mid, mat_p_light,
+                     mat_p_mid, mat_p_light, mat_p_mid]
+    base_ang_in = base_ang + math.pi / N_OUT
+    for k in range(N_IN):
+        mat = inner_pattern[k % len(inner_pattern)]
+        ob = bpy.data.objects.new("petalo_inner", inner_mesh_lut[mat])
+        ob.parent = head
+        ob.location = (0, 0, 0.035)
+        ob.rotation_euler = (random.uniform(-0.08, 0.08),
+                             random.uniform(-0.10, 0.16),    # mas erguido/copado
+                             base_ang_in + k * (2 * math.pi / N_IN)
+                             + random.uniform(-0.06, 0.06))
+        s = random.uniform(0.85, 1.05)
+        ob.scale = (s, s, s * random.uniform(0.95, 1.05))
+        scene.collection.objects.link(ob)
+
+    # centro amarillo facetado (esfera achatada, flat shading) + textura de
+    # florecitas concentricas (como un girasol) para que no se lea liso
+    CEN_R, CEN_Z, CEN_SQ = 0.34, 0.10, 0.5
+    bpy.ops.mesh.primitive_ico_sphere_add(subdivisions=2, radius=CEN_R,
                                           location=(0, 0, 0))
     cen = bpy.context.active_object
     cen.name = "centro"
     cen.parent = head
-    cen.location = (0, 0, 0.10)
-    cen.scale = (1, 1, 0.5)
+    cen.location = (0, 0, CEN_Z)
+    cen.scale = (1, 1, CEN_SQ)
     cen.data.materials.append(MAT_CENTRO)   # queda flat (facetado)
+
+    MAT_CENTRO_DARK = simple_mat("centro_flor_oscuro",
+                                 tuple(c * 0.74 for c in COL_CENTRO), 0.7)
+    for ri, rad in enumerate((0.10, 0.185, 0.265)):
+        count = 6 + ri * 4
+        for k in range(count):
+            ang = k * (2 * math.pi / count) + ri * 0.35
+            fx, fy = math.cos(ang) * rad, math.sin(ang) * rad
+            dome = math.sqrt(max(0.0, 1 - (rad / CEN_R) ** 2))
+            fz = CEN_Z + CEN_R * CEN_SQ * dome + 0.006
+            bpy.ops.mesh.primitive_ico_sphere_add(
+                subdivisions=1, radius=random.uniform(0.024, 0.038),
+                location=(fx, fy, fz))
+            fb = bpy.context.active_object
+            fb.name = "floret"
+            fb.parent = head
+            fb.scale = (1, 1, 0.55)
+            fb.data.materials.append(MAT_CENTRO_DARK if ri % 2 == 0 else MAT_CENTRO)
 
     # 2 hojas en el tallo
     hoja_me = bpy.data.meshes.new("hoja_tallo")
@@ -471,7 +656,8 @@ def build_flor():
         scene.collection.objects.link(ob)
 
     # petalos sueltos: algunos cayendo a media altura, otros ya en el pasto
-    pet_small = make_quad_mesh("petalo_suelto", 0.05, 0.12, 0.015, MAT_PET_SUELTO)
+    pet_small = make_petal_mesh("petalo_suelto", 0.15, 0.09, MAT_PET_SUELTO,
+                                channel=0.03)
     for _ in range(3):
         ang = random.uniform(0, 6.28)
         rr = random.uniform(0.35, 1.5)
@@ -490,7 +676,7 @@ def build_sakura():
     Replica la MISMA secuencia de llamadas random que el original para
     reproducir la geometria aprobada; solo cambian isla y pipeline."""
     TREE_H, TRUNK_R = 4.0, 0.15
-    cu, _ = new_tree_curve("tronco", MAT_BARK)
+    cu, trunk_ob = new_tree_curve("tronco", MAT_BARK)
     tips = []
     # tronco (level 0 original: jitter 0.28*0.5, up 0.22)
     spawn0, (top, topd) = grow(cu, Vector((0, 0, 0)), Vector((0.12, -0.05, 1)),
@@ -520,6 +706,10 @@ def build_sakura():
                               random.uniform(0.05, 0.5)))).normalized()
             grow(cu, p, dd, TREE_H * 0.22, max(r * 0.6, 0.02), 0.012,
                  jitter=0.28, up=0.10, tips=tips)
+    # corteza delicada (no tan rugosa como el roble/bonsai, la sakura es un
+    # arbol joven de tronco liso con solo un poco de caracter)
+    add_bark_displace(trunk_ob, disp1=0.020, scale1=0.22, turb1=3.0,
+                      disp2=0.009, scale2=0.07)
     # copa: racimos chicos sobre ramas medias + grandes en puntas + nube extra
     cluster_centers = []
     for sp, end in level1_ends:
