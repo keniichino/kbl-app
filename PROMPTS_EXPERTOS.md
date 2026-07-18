@@ -1,6 +1,7 @@
 # KBL App — estado del proyecto y prompts para continuar
 
-Última actualización: 2026-07-18. Este documento es para abrir **chats nuevos** (sin memoria de la sesión donde se escribió) y seguir trabajando en un tema puntual. Cada prompt de abajo es autocontenido: pegalo entero en un chat nuevo de Claude Code con acceso a esta carpeta.
+Última actualización: 2026-07-18 (cierre de la ronda de calidad 3D — ver
+sección "Ronda 3/4 cerrada" debajo del Prompt 1). Este documento es para abrir **chats nuevos** (sin memoria de la sesión donde se escribió) y seguir trabajando en un tema puntual. Cada prompt de abajo es autocontenido: pegalo entero en un chat nuevo de Claude Code con acceso a esta carpeta.
 
 ---
 
@@ -14,11 +15,11 @@
 - Diseño estilo iOS: SF Pro, controles segmentados, diálogos de confirmación propios, paneles vidriados.
 - Un workflow de n8n armado (resumen semanal de gastos por WhatsApp) — creado pero inactivo, falta un dato de Keni para prenderlo.
 
-**Bloqueo actual (al momento de escribir esto):** Blender no arranca en la PC de Keni — se cae al instante (`STATUS_DLL_INIT_FAILED` o similar) desde un apagado abrupto de la máquina. Diagnosticado a fondo (binario sano, python embebido de Blender anda bien, GPU responde a nivel cómputo) — huele a driver gráfico en estado inconsistente. **Antes de tocar Blender en una sesión nueva, pedirle a Keni que reinició la PC por completo y probar `blender.exe --background --version` primero.**
+**Bloqueo de Blender:** resuelto. En la sesión del 2026-07-18 `blender.exe --background --version` arrancó sin problemas (el apagado abrupto que lo rompía ya no afecta tras el reinicio de la PC). Si vuelve a pasar, mismo diagnóstico: pedirle a Keni que reinicie la PC completa y probar ese comando antes de nada.
 
 **Pendiente, en orden de lo que Keni fue pidiendo:**
-1. Terminar la ronda de calidad 3D en curso (ver Prompt 1) — redondeo de estilo, flor con referencias reales, islas temáticas por especie.
-2. Etapas de crecimiento reales, no solo escala (Prompt 2) — pausado hasta que 1 cierre.
+1. ~~Terminar la ronda de calidad 3D en curso (ver Prompt 1)~~ — **CERRADA el 2026-07-18**, ver detalle debajo del Prompt 1. Queda un pulido menor abierto (glare/bloom de compositor, íconos PWA regenerados desde el nuevo hero de sakura) para quien quiera afinar más, pero no bloquea nada.
+2. Etapas de crecimiento reales, no solo escala (Prompt 2) — ahora sí desbloqueado, la ronda de calidad de los modelos base ya cerró.
 3. "Bosque acumulativo": que los árboles ya ganados aparezcan de fondo en la escena (Prompt 5) — sin diseñar todavía.
 4. Multi-usuario real con login (Prompt 3) — Keni quiere que en el futuro sus amigos usen la app cada uno con su cuenta.
 5. Terminar automatizaciones de n8n (Prompt 4) — activar el resumen semanal, e importar el CSV de la tarjeta de Keni cuando él lo suba a `gastos-import/` (todavía no lo hizo).
@@ -144,6 +145,63 @@ dejando a Keni esperando sin aviso.
 Reportá al final: qué técnica funcionó para cada prioridad, iteraciones
 totales, y cuál de las 5 especies quedó mejor / cuál sigue con margen.
 ```
+
+### Ronda 3/4 cerrada (2026-07-18) — qué se hizo
+
+Todo en `blender/especies_isla.py`, re-renderizado en Cycles GPU/OPTIX 160
+samples, copiado a `app/assets/360/<especie>/`, cache de la PWA subida a
+`kbl-v15` (`app/sw.js`), verificado en preview local (todas las especies
+cargan sus 36 frames con 200 OK, sin errores de consola), commit + push
+hecho a `main`.
+
+1. **Redondeo (prioridad 1, las 5 especies)**: nuevo helper `add_round_bevel`
+   (Bevel modifier real + `harden_normals` + shading suave) aplicado a disco
+   de pasto, cono de tierra, piedras, bellotas y maceta del bonsai. Las
+   hojas/pétalos (`make_petal_mesh`, usado por las 5 especies) pasaron a
+   shading suave (antes quedaban flat-shaded, se veían como origami). Nada
+   de esto tocó la cantidad de facetas grandes (silueta low-poly intacta),
+   solo se suavizaron los bordes.
+2. **Clipping/invisibles (prioridad 2)**: el script ya traía un chequeo
+   automático (`check_border_alpha` sobre los 36 frames + margen analítico
+   vs. el frustum de cámara). Con el render final de esta ronda, **las 5
+   especies dieron `WORST BORDER ALPHA: 0.0` (sin clipping en ningún
+   frame)**. El ROBLE sigue con margen superior justo (`0.08` unidades,
+   contra `~0.2-1.5` de las otras) — es un margen ajustado pero POSITIVO y
+   confirmado sin clipping real en los 36 ángulos; si alguien quiere más
+   colchón a futuro, achicar un poco la altura de la copa. No se encontraron
+   materiales con backface culling activado ni normales invertidas en
+   ninguna de las 5 (se revisó especialmente el tronco en curva S del
+   bonsai, convertido a mesh para el displace de corteza — normales
+   correctas en los 2 ángulos inspeccionados).
+3. **Flor rediseñada (prioridad 3)**: se bajaron y miraron fotos reales de
+   Cosmos bipinnatus (Wikimedia Commons, licencia libre) antes de tocar la
+   geometría. Cambios: pasó de 2 anillos tipo dalia/zinnia (8 + 6 pétalos) a
+   **1 solo anillo de 8 pétalos** anchos tipo paleta, con **muesca/hendidura
+   en la punta** (parámetro nuevo `notch` en `make_petal_mesh`, arma 2
+   lóbulos chicos en vez de un pico único), casi planos en vez de caídos
+   (la cosmos real no se pliega tanto como una dalia). Centro más chico y
+   compacto + **aro de "anteras" oscuras con punta clara** (conos finos +
+   esferita crema) copiando el detalle que se ve clarito en las macro fotos
+   de referencia.
+4. **Identidad por isla (prioridad 4, las 5)**: nuevo dict `SUELO` (color de
+   disco por especie) + funciones `deco_<especie>()`: **bonsai** = aro de
+   cerámica (torus) + arena/grava con rastrillado simulado vía material
+   (Wave RINGS + Bump, sin geometría extra); **sakura** = musgo denso
+   (`add_moss_tuft`, mismo truco de racimos chatos que ya usaba el bonsai) +
+   una piedra grande cubierta de musgo; **roble** = terreno rocoso + 5
+   raíces gruesas expuestas (curvas NURBS con la misma técnica de corteza
+   por displace que el tronco) asomando del borde, más piedras y musgo;
+   **arbolito** = la pradera genérica de siempre, solo pulida (redondeo +
+   bevel, sin rediseño de props, tal como pedía la prioridad); **flor** =
+   tierra oscura de cantero + borde de 15 piedras bajas en anillo + hojitas
+   sueltas. El radio de isla (`GRASS_R`) y la cámara quedaron exactamente
+   iguales en las 5 — el selector de la app no salta de escala.
+
+**No se llegó a hacer** (queda para quien retome): pulido de compositor
+(glare/bloom sutil, mencionado como prioridad 4 del prompt original de esta
+ronda) y regenerar los íconos de la PWA (`app/icons/icon-*.png`,
+`apple-touch-icon.png`) desde el nuevo hero de sakura — siguen siendo los
+del hero viejo, no rotos pero desactualizados.
 
 ---
 
