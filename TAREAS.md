@@ -1,24 +1,27 @@
 # Tareas de Keni — KBL App
 
+> Ver [`PROMPTS_EXPERTOS.md`](PROMPTS_EXPERTOS.md) para el estado completo del proyecto y prompts listos para abrir en chats nuevos por tema (3D/Blender, crecimiento real, backend/login, n8n, producto).
+
+## Bloqueo activo
+- [ ] **Blender no arranca** en esta PC (se cae al instante desde el último apagado abrupto). Probá **reiniciar la PC por completo** (apagar/prender, no suspender) antes de retomar el trabajo de 3D.
+
 ## Ahora
-- [x] ~~Instalar Blender~~ (5.2 instalado ✅)
-- [x] ~~Instalar la app en el iPhone~~ ✅
-- [x] ~~Addon Blender MCP~~ (instalado y aprobado ✅)
-- [ ] **Revocar el token de Supabase** que pegaste en el chat: https://supabase.com/dashboard/account/tokens → borrar el token. La app no lo usa; es solo higiene de seguridad.
+- [ ] **Revocar el token de Supabase** que anduvo pegado en el chat: https://supabase.com/dashboard/account/tokens → borrar. (Sigue activo, se usó una vez más para armar n8n — cuando quieras cerrarlo, adelante.)
+- [ ] **Subir el CSV de tu tarjeta** a `gastos-import/` — lo sigo esperando para armar la importación + categorización automática.
+- [ ] **Mandar tu número de WhatsApp** (formato `54911XXXXXXXX@s.whatsapp.net`) para activar el resumen semanal de gastos que ya está armado en n8n.
 - [ ] **Instalar la app en la PC**: Chrome/Edge → https://keniichino.github.io/kbl-app/ → ícono de instalar en la barra de direcciones.
-- [ ] **Para el modo interactivo de Blender**: con Blender abierto, apretá N en el viewport 3D → pestaña "BlenderMCP" → botón "Connect to Claude". Eso se hace cada vez que quieras que Claude toque tu Blender en vivo (los renders por script no lo necesitan).
-- [ ] **Loguearte en BlenderKit**: abrí Blender → panel N → pestaña BlenderKit → "Login". Cuenta gratis en blenderkit.com si no tenés. Sin login no se pueden descargar assets.
-- [ ] **Recomendado**: borrá o poné en cuarentena la carpeta `C:\Back Up\...\add ons y apss craked` — los activadores craqueados son el vector de malware #1, y esta máquina tiene credenciales del trabajo y personales. BlenderKit era gratis (tu zip resultó ser el oficial); lo demás de esa carpeta, evaluá si vale el riesgo.
 
 ## Cuando puedas
-- [ ] **Configurar el Modo Concentración en iOS** (el "bloqueo" de redes): Ajustes → Concentración → "+" → crear modo "Foco" → en Apps elegí "Silenciar" y agregá Instagram/TikTok/etc. Después, cuando plantes un árbol, activás ese modo desde el Centro de Control (un toque).
-- [ ] **Más referencias visuales a `IMG/`**: en máxima calidad está perfecto (yo comprimo al integrar). Para usar de FONDO en la app buscá escenas SIN árbol (pradera + luna/cielo solos) — las que tienen árbol sirven como referencia de estilo para Blender.
+- [ ] **Configurar el Modo Concentración en iOS**: Ajustes → Concentración → "+" → crear modo "Foco" → silenciar Instagram/TikTok/etc. Se activa desde el Centro de Control al plantar.
+- [ ] **Recomendado**: revisá la carpeta `C:\Back Up\...\add ons y apss craked` — evaluá si vale el riesgo de tener activadores craqueados en una máquina con credenciales de trabajo.
 
-## Decisiones pendientes (pensalas, no corren)
-- [ ] ¿Nombres/duraciones de especies te cierran? (Flor 15′ · Arbolito 25′ · Roble 50′ · Gran Sakura 90′)
+## Decisiones pendientes
+- [ ] Multi-usuario real (login) — a futuro, para cuando tus amigos usen la app cada uno con su cuenta.
 - [ ] Migrar el proyecto Supabase del trabajo (APP - AIAP) fuera de tu cuenta personal — conversación con la empresa.
 
-## Lo que hago yo (para referencia)
-- Configurar blender-mcp cuando Blender esté instalado, armar escena base y renderizar assets (fondo + árbol en 5-6 etapas por especie).
-- Login + RLS en Supabase antes del módulo Gastos (y base multi-usuario para tus amigos).
-- Módulos Gastos y Notas.
+## Estado de los módulos (resumen)
+- **Foco**: timer + isla 3D girable creciendo por escala (no etapas reales todavía) + vista previa 3D en pantalla de inicio.
+- **Bosque**: catálogo de 5 especies (sakura, arbolito, roble, flor, bonsai) con visor 360 fluido (crossfade).
+- **Gastos**: carga rápida, categorías, sync en la nube — sin login todavía (tablas abiertas).
+- **Notas**: lista + editor con autosave, sync en la nube.
+- **n8n**: resumen semanal armado, inactivo, esperando tu número.
