@@ -746,3 +746,117 @@ body[data-phase="noche"] .tabbar { background: linear-gradient(150deg, rgba(255,
     margin: auto 0 0; /* pegada abajo; sin auto horizontal para que estire */
   }
 }
+
+/* ====== Cuotas ====== */
+.cuotas-proy-wrap {
+  margin: 12px 0 8px;
+  background: rgba(255,255,255,.55);
+  border-radius: 16px;
+  padding: 14px 16px 10px;
+}
+.cuotas-proy-title {
+  font-size: .75rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--ink-soft);
+  margin-bottom: 10px;
+}
+.proy-row {
+  display: grid;
+  grid-template-columns: 90px 1fr 80px;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 0;
+  border-bottom: 1px solid rgba(0,0,0,.05);
+}
+.proy-row:last-child { border-bottom: none; }
+.proy-row--next .proy-mes { font-weight: 700; color: var(--ink); }
+.proy-row--next .proy-monto { font-weight: 700; color: var(--accent-deep); }
+.proy-mes { font-size: .8rem; color: var(--ink-soft); text-transform: capitalize; }
+.proy-barra-wrap { height: 5px; background: rgba(0,0,0,.08); border-radius: 3px; overflow: hidden; }
+.proy-barra { height: 100%; background: var(--grass); border-radius: 3px; transition: width .4s ease; }
+.proy-monto { font-size: .82rem; text-align: right; color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+
+/* Form agregar cuota */
+.cuota-form-wrap {
+  margin: 10px 0 6px;
+  background: rgba(255,255,255,.55);
+  border-radius: 16px;
+  overflow: hidden;
+}
+.cuota-form-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 13px 16px;
+  font-size: .92rem;
+  font-weight: 700;
+  color: var(--ink);
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+.cuota-form-toggle::-webkit-details-marker { display: none; }
+.cuota-form-inner {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 0 16px 16px;
+}
+.cuota-form-inner input[type="text"],
+.cuota-form-inner input[type="number"],
+.cuota-fecha-input {
+  width: 100%;
+  padding: 11px 14px;
+  border: 1.5px solid rgba(255,255,255,.8);
+  border-radius: 12px;
+  background: #fff;
+  font: 500 1rem var(--font);
+  color: var(--ink);
+  outline: none;
+}
+.cuota-form-inner input:focus { border-color: var(--grass); }
+.cuota-num-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.cuota-num-label { font-size: .82rem; color: var(--ink-soft); font-weight: 600; width: 68px; flex-shrink: 0; }
+.cuota-num-input { width: 56px !important; text-align: center; flex-shrink: 0; }
+.cuota-num-sep { font-size: .9rem; color: var(--ink-soft); }
+.cuota-fecha-input { flex: 1; }
+
+/* Cards de cuotas activas */
+.cuota-card {
+  background: rgba(255,255,255,.7);
+  border-radius: 14px;
+  padding: 12px 14px 10px;
+  margin-bottom: 8px;
+  box-shadow: 0 1px 4px rgba(30,50,30,.06);
+}
+.cuota-card-top {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.cuota-emoji { font-size: 1.3rem; line-height: 1; padding-top: 2px; }
+.cuota-info { flex: 1; min-width: 0; }
+.cuota-desc { font-size: .95rem; font-weight: 700; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cuota-sub { font-size: .78rem; color: var(--ink-soft); margin-top: 2px; }
+.cuota-actions { display: flex; gap: 6px; flex-shrink: 0; }
+.cuota-ok, .cuota-del {
+  width: 30px; height: 30px;
+  border: none; border-radius: 8px;
+  font-size: .85rem; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: transform .12s;
+}
+.cuota-ok { background: #e9fbe2; color: #2e7d32; }
+.cuota-del { background: #fde8e8; color: #b71c1c; }
+.cuota-ok:active, .cuota-del:active { transform: scale(.9); }
+.cuota-progress-wrap { height: 4px; background: rgba(0,0,0,.08); border-radius: 2px; overflow: hidden; margin-bottom: 4px; }
+.cuota-progress-bar { height: 100%; background: var(--grass); border-radius: 2px; transition: width .4s ease; }
+.cuota-progress-label { font-size: .73rem; color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+.cuotas-empty-sub { font-size: .85rem; color: var(--ink-soft); text-align: center; padding: 8px 0; }

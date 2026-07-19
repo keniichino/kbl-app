@@ -137,6 +137,47 @@
       <div class="notas-lista" id="notas-lista"></div>
     </section>
 
+    <!-- ============ VISTA: CUOTAS ============ -->
+    <section id="view-cuotas" class="view">
+      <header class="view-header">
+        <h1>Cuotas</h1>
+        <p class="view-sub" id="cuotas-mes-label"></p>
+      </header>
+
+      <div class="gasto-hero">
+        <div class="gasto-total" id="cuotas-total">$ 0</div>
+        <div class="gasto-total-sub">próximo vencimiento</div>
+        <div class="gasto-cats-resumen" id="cuotas-activas-count"></div>
+      </div>
+
+      <div class="cuotas-proy-wrap">
+        <div class="cuotas-proy-title">Proyección</div>
+        <div id="cuotas-proyeccion"></div>
+      </div>
+
+      <details class="cuota-form-wrap" id="cuota-form">
+        <summary class="cuota-form-toggle">＋ Agregar cuota</summary>
+        <div class="cuota-form-inner">
+          <input id="cuota-desc" type="text" placeholder="¿Qué compraste?" autocomplete="off">
+          <input id="cuota-monto" type="text" inputmode="decimal" placeholder="$ por cuota" autocomplete="off">
+          <div class="cuota-num-row">
+            <label class="cuota-num-label">Cuota</label>
+            <input id="cuota-num-actual" type="number" min="1" value="1" class="cuota-num-input">
+            <span class="cuota-num-sep">de</span>
+            <input id="cuota-num-total" type="number" min="1" value="1" class="cuota-num-input">
+          </div>
+          <div class="cuota-num-row">
+            <label class="cuota-num-label">1er venc.</label>
+            <input id="cuota-fecha" type="date" class="cuota-fecha-input">
+          </div>
+          <div class="cat-chips" id="cuota-tarjeta-chips"></div>
+          <button class="btn-primary" id="btn-agregar-cuota">Guardar cuota</button>
+        </div>
+      </details>
+
+      <div id="cuotas-lista"></div>
+    </section>
+
     <!-- Editor de nota (overlay a pantalla completa) -->
     <div class="nota-editor" id="nota-editor" hidden>
       <div class="editor-top">
@@ -153,6 +194,7 @@
       <button class="tab active" data-view="foco"><span class="tab-icon">🌱</span><span>Foco</span></button>
       <button class="tab" data-view="bosque"><span class="tab-icon">🌳</span><span>Bosque</span></button>
       <button class="tab" data-view="gastos"><span class="tab-icon">💸</span><span>Gastos</span></button>
+      <button class="tab" data-view="cuotas"><span class="tab-icon">💳</span><span>Cuotas</span></button>
       <button class="tab" data-view="notas"><span class="tab-icon">✍️</span><span>Notas</span></button>
     </nav>
   </main>

@@ -4,6 +4,7 @@ import { SPECIES, renderTree, miniTree, speciesCard, dayPhase } from './tree.js'
 import { initGastos, renderGastos } from './gastos.js';
 import { initViewer360 } from './viewer360.js';
 import { initNotas, renderNotas } from './notas.js';
+import { initCuotas, renderCuotas } from './cuotas.js';
 import { confirmar } from './dialog.js';
 
 const $ = (sel) => document.querySelector(sel);
@@ -77,6 +78,7 @@ document.querySelectorAll('.tab').forEach(tab => {
       v.classList.toggle('active', v.id === 'view-' + tab.dataset.view));
     if (tab.dataset.view === 'bosque') renderBosque();
     if (tab.dataset.view === 'gastos') renderGastos();
+    if (tab.dataset.view === 'cuotas') renderCuotas();
     if (tab.dataset.view === 'notas') renderNotas();
   });
 });
@@ -349,6 +351,9 @@ function onRemoteChange(kind) {
   if (kind === 'gastos' && document.querySelector('#view-gastos').classList.contains('active')) {
     renderGastos();
   }
+  if (kind === 'cuotas' && document.querySelector('#view-cuotas').classList.contains('active')) {
+    renderCuotas();
+  }
   if (kind === 'notas' && document.querySelector('#view-notas').classList.contains('active')) {
     renderNotas();
   }
@@ -368,6 +373,7 @@ async function boot() {
   applyPhase();
   initGastos();
   initNotas();
+  initCuotas();
   initIslas();
   resetToIdle(); // render inmediato; el sync ajusta el estado si hace falta
   await initSync(onRemoteChange);

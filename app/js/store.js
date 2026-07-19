@@ -12,6 +12,7 @@ const KEYS = {
   active: 'kbl.foco.active',
   gastos: 'kbl.gastos',
   notas: 'kbl.notas',
+  cuotas: 'kbl.cuotas',
 };
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -104,9 +105,10 @@ export async function initSync(onRemoteChange) {
       supabase.from('foco_active').select('*').eq('id', 1).maybeSingle(),
       supabase.from('gastos').select('*'),
       supabase.from('notas').select('*'),
+      supabase.from('cuotas').select('*'),
     ]);
     const timeout = new Promise((_, rej) => setTimeout(rej, 3500, 'timeout'));
-    const [sess, act, gastosR, notasR] = await Promise.race([pull, timeout]);
+    const [sess, act, gastosR, notasR, cuotasR] = await Promise.race([pull, timeout]);
     if (sess.data) write(KEYS.sessions, sess.data.map(fromRemote));
     if (!act.error) {
       const local = getActive();
@@ -115,6 +117,7 @@ export async function initSync(onRemoteChange) {
     }
     if (gastosR.data) mergeListPull('gastos', KEYS.gastos, gastosR.data, fromRemoteGasto, toRemoteGasto);
     if (notasR.data) mergeListPull('notas', KEYS.notas, notasR.data, fromRemoteNota, toRemoteNota);
+    if (cuotasR.data) mergeListPull('cuotas', KEYS.cuotas, cuotasR.data, fromRemoteCuota, toRemoteCuota);
   } catch {
     /* offline: seguimos con localStorage */
   }
@@ -139,6 +142,7 @@ export async function initSync(onRemoteChange) {
 
   suscribirLista('gastos', KEYS.gastos, fromRemoteGasto, 'gastos');
   suscribirLista('notas', KEYS.notas, fromRemoteNota, 'notas');
+  suscribirLista('cuotas', KEYS.cuotas, fromRemoteCuota, 'cuotas');
 }
 
 // --- Gastos: [{ id, monto, descripcion, categoria, fecha, ts }] ---
@@ -247,6 +251,54 @@ function suscribirLista(tableName, key, fromRemote, kind) {
       notify(kind);
     })
     .subscribe();
+}
+
+// --- Cuotas: [{ id, descripcion, tarjeta, monto_cuota, cuota_actual, cuota_total, fecha_primer_venc, estado, created_at }] ---
+
+const toRemoteCuota = (c) => ({
+  id: c.id,
+  descripcion: c.descripcion,
+  tarjeta: c.tarjeta,
+  monto_cuota: c.monto_cuota,
+  cuota_actual: c.cuota_actual,
+  cuota_total: c.cuota_total,
+  fecha_primer_venc: c.fecha_primer_venc,
+  estado: c.estado,
+  created_at: c.created_at,
+});
+const fromRemoteCuota = (r) => ({
+  id: r.id,
+  descripcion: r.descripcion,
+  tarjeta: r.tarjeta,
+  monto_cuota: Number(r.monto_cuota),
+  cuota_actual: Number(r.cuota_actual),
+  cuota_total: Number(r.cuota_total),
+  fecha_primer_venc: r.fecha_primer_venc,
+  estado: r.estado,
+  created_at: r.created_at,
+});
+
+export function getCuotas() {
+  return read(KEYS.cuotas, []);
+}
+
+export function addCuota(cuota) {
+  const all = getCuotas();
+  all.push(cuota);
+  write(KEYS.cuotas, all);
+  supabase.from('cuotas').upsert(toRemoteCuota(cuota), { onConflict: 'id' }).then(() => {}, () => {});
+  return cuota;
+}
+
+export function removeCuota(id) {
+  write(KEYS.cuotas, getCuotas().filter((c) => c.id !== id));
+  supabase.from('cuotas').delete().eq('id', id).then(() => {}, () => {});
+}
+
+export function updateCuotaEstado(id, estado) {
+  const all = getCuotas().map((c) => c.id === id ? { ...c, estado } : c);
+  write(KEYS.cuotas, all);
+  supabase.from('cuotas').update({ estado }).eq('id', id).then(() => {}, () => {});
 }
 
 // --- Estadísticas derivadas ---
