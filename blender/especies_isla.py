@@ -30,6 +30,24 @@ if "--samples" in argv:
 ENGINE = "eevee"
 if "--engine" in argv:
     ENGINE = argv[argv.index("--engine") + 1]
+# glare/bloom sutil de compositor -- valores por defecto ya calibrados para no
+# quemar los pasteles con view_transform Standard; se pueden pisar por CLI
+# para pruebas rapidas con --test
+NO_GLARE = "--no-glare" in argv
+# calibrado a ojo comparando renders con/sin glare (ver TAREAS/PROMPTS): 0.6
+# de threshold quemaba visiblemente el follaje (halo grande, colores lavados),
+# 1.4 no generaba NINGUN cambio de pixel (demasiado alto, cero highlights lo
+# cruzan). 0.8/0.25/0.35 es el punto donde el diff es real pero contenido
+# (~5% de pixeles, delta maximo ~18/255) -- se nota como pulido, no como HDR.
+GLARE_THRESHOLD = 0.8
+if "--glare-threshold" in argv:
+    GLARE_THRESHOLD = float(argv[argv.index("--glare-threshold") + 1])
+GLARE_STRENGTH = 0.25
+if "--glare-strength" in argv:
+    GLARE_STRENGTH = float(argv[argv.index("--glare-strength") + 1])
+GLARE_SIZE = 0.35
+if "--glare-size" in argv:
+    GLARE_SIZE = float(argv[argv.index("--glare-size") + 1])
 
 OUT_DIR = r"G:\Mi unidad\KBL APP Personal\blender"
 TT_DIR = os.path.join(OUT_DIR, "turntable_" + ESPECIE)
@@ -1514,6 +1532,41 @@ else:
     scene.eevee.fast_gi_ray_count = 16
     scene.eevee.use_raytracing = True
     scene.eevee.ray_tracing_options.resolution_scale = '1'
+
+# ------------------------------------------------------------------ compositor: glare/bloom sutil
+# Objetivo: un toque de luz calida/dreamy sobre los brillos reales (sol en
+# petalos/hojas), sin lavar los pasteles ni tocar el alpha (film_transparent
+# debe seguir dando recorte limpio). "Fog Glow" es el tipo mas suave de los
+# glare de Blender (halo parejo, no rayos/destellos tipo lente); threshold
+# alto (1.4) para que solo prendan los pixeles realmente sobre-iluminados, no
+# el pastel base; strength bajo (0.15) para que el resultado sea mayormente
+# la imagen original con apenas una pizca de glow mezclada encima.
+# Nota API: Blender 5.2 saco `scene.node_tree` / `CompositorNodeComposite`;
+# ahora el compositor es un node group (`scene.compositing_node_group`) que
+# termina en un `NodeGroupOutput` con un socket de interfaz "Image", y las
+# propiedades del nodo Glare (type/threshold/size/strength) pasaron a ser
+# sockets de entrada en vez de atributos directos del nodo.
+if not NO_GLARE:
+    scene.use_nodes = True
+    ctree = bpy.data.node_groups.new("Compositor_" + ESPECIE, 'CompositorNodeTree')
+    scene.compositing_node_group = ctree
+    ctree.interface.new_socket(name="Image", in_out='OUTPUT', socket_type='NodeSocketColor')
+    rlayers = ctree.nodes.new('CompositorNodeRLayers')
+    glare = ctree.nodes.new('CompositorNodeGlare')
+    glare.inputs['Type'].default_value = 'Fog Glow'
+    glare.inputs['Quality'].default_value = 'High'
+    glare.inputs['Threshold'].default_value = GLARE_THRESHOLD
+    glare.inputs['Size'].default_value = GLARE_SIZE
+    glare.inputs['Strength'].default_value = GLARE_STRENGTH
+    # alpha propio del glow descartado y reemplazado por el de RenderLayers
+    # sin tocar, para que el recorte transparente quede identico a antes
+    setalpha = ctree.nodes.new('CompositorNodeSetAlpha')
+    setalpha.inputs['Type'].default_value = 'Replace Alpha'
+    group_out = ctree.nodes.new('NodeGroupOutput')
+    ctree.links.new(rlayers.outputs['Image'], glare.inputs['Image'])
+    ctree.links.new(glare.outputs['Image'], setalpha.inputs['Image'])
+    ctree.links.new(rlayers.outputs['Alpha'], setalpha.inputs['Alpha'])
+    ctree.links.new(setalpha.outputs['Image'], group_out.inputs[0])
 
 os.makedirs(TT_DIR, exist_ok=True)
 

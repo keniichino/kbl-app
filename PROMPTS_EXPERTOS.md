@@ -1,7 +1,8 @@
 # KBL App — estado del proyecto y prompts para continuar
 
-Última actualización: 2026-07-18 (cierre de la ronda de calidad 3D — ver
-sección "Ronda 3/4 cerrada" debajo del Prompt 1). Este documento es para abrir **chats nuevos** (sin memoria de la sesión donde se escribió) y seguir trabajando en un tema puntual. Cada prompt de abajo es autocontenido: pegalo entero en un chat nuevo de Claude Code con acceso a esta carpeta.
+Última actualización: 2026-07-19 (pulido final de la ronda de calidad 3D —
+glare/bloom de compositor, íconos PWA, chequeo del margen del roble — ver
+sección "Pulido final cerrado" debajo del Prompt 1). Este documento es para abrir **chats nuevos** (sin memoria de la sesión donde se escribió) y seguir trabajando en un tema puntual. Cada prompt de abajo es autocontenido: pegalo entero en un chat nuevo de Claude Code con acceso a esta carpeta.
 
 ---
 
@@ -18,7 +19,7 @@ sección "Ronda 3/4 cerrada" debajo del Prompt 1). Este documento es para abrir 
 **Bloqueo de Blender:** resuelto. En la sesión del 2026-07-18 `blender.exe --background --version` arrancó sin problemas (el apagado abrupto que lo rompía ya no afecta tras el reinicio de la PC). Si vuelve a pasar, mismo diagnóstico: pedirle a Keni que reinicie la PC completa y probar ese comando antes de nada.
 
 **Pendiente, en orden de lo que Keni fue pidiendo:**
-1. ~~Terminar la ronda de calidad 3D en curso (ver Prompt 1)~~ — **CERRADA el 2026-07-18**, ver detalle debajo del Prompt 1. Queda un pulido menor abierto (glare/bloom de compositor, íconos PWA regenerados desde el nuevo hero de sakura) para quien quiera afinar más, pero no bloquea nada.
+1. ~~Terminar la ronda de calidad 3D en curso (ver Prompt 1)~~ — **CERRADA el 2026-07-18**, ver detalle debajo del Prompt 1. El pulido menor que había quedado abierto (glare/bloom de compositor, íconos PWA, doble-chequeo del margen del roble) **también se cerró el 2026-07-19** — ver "Pulido final cerrado" debajo del Prompt 1.
 2. Etapas de crecimiento reales, no solo escala (Prompt 2) — ahora sí desbloqueado, la ronda de calidad de los modelos base ya cerró.
 3. "Bosque acumulativo": que los árboles ya ganados aparezcan de fondo en la escena (Prompt 5) — sin diseñar todavía.
 4. Multi-usuario real con login (Prompt 3) — Keni quiere que en el futuro sus amigos usen la app cada uno con su cuenta.
@@ -197,11 +198,64 @@ hecho a `main`.
    sueltas. El radio de isla (`GRASS_R`) y la cámara quedaron exactamente
    iguales en las 5 — el selector de la app no salta de escala.
 
-**No se llegó a hacer** (queda para quien retome): pulido de compositor
-(glare/bloom sutil, mencionado como prioridad 4 del prompt original de esta
-ronda) y regenerar los íconos de la PWA (`app/icons/icon-*.png`,
-`apple-touch-icon.png`) desde el nuevo hero de sakura — siguen siendo los
-del hero viejo, no rotos pero desactualizados.
+**No se llegó a hacer en esa ronda** (cerrado después, ver bloque de abajo):
+pulido de compositor (glare/bloom sutil) y regenerar los íconos de la PWA
+desde el nuevo hero de sakura.
+
+### Pulido final cerrado (2026-07-19) — los 3 puntos sueltos de la ronda anterior
+
+1. **Glare/bloom de compositor**: agregado en `especies_isla.py` (bloque
+   "compositor: glare/bloom sutil", justo después de los render settings).
+   Nota de API: Blender 5.2 sacó `scene.node_tree` / `CompositorNodeComposite`
+   — ahora el compositor es un node group propio
+   (`scene.compositing_node_group`, creado con
+   `bpy.data.node_groups.new(..., 'CompositorNodeTree')`) que termina en un
+   `NodeGroupOutput` con un socket de interfaz "Image", y las propiedades
+   del nodo Glare (tipo/threshold/tamaño/fuerza) pasaron a ser **sockets de
+   entrada** (`glare.inputs['Threshold'].default_value = ...`) en vez de
+   atributos directos del nodo (`glare.threshold` ya no existe). Se usó tipo
+   "Fog Glow" (el más suave, sin rayos/destellos tipo lente) + un
+   `CompositorNodeSetAlpha` en modo "Replace Alpha" alimentado con el canal
+   alpha original de Render Layers, para que el recorte transparente
+   (`film_transparent`) no se vea afectado por el glow.
+   Calibración (comparando renders con/sin glare, diff de píxeles vía
+   PowerShell + System.Drawing): threshold 0.6 quemaba visiblemente
+   (halo grande, colores lavados, ~21% de píxeles con delta hasta 89/255);
+   threshold 1.4 no generaba NINGÚN cambio de píxel (demasiado alto, cero
+   highlights de la escena lo cruzan). Valores finales, calibrados a ojo +
+   con diff numérico: **threshold 0.8, strength 0.25, size 0.35** — diff
+   contenido (~5% de píxeles tocados, delta máximo ~18/255), se nota como un
+   toque cálido en los bordes iluminados de hojas/pétalos sin lavar los
+   pasteles. Expuesto por CLI para pruebas futuras: `--glare-threshold`,
+   `--glare-strength`, `--glare-size`, `--no-glare`. Las 5 especies se
+   re-renderizaron completas (36 frames + hero, Cycles GPU/OPTIX 160
+   samples) con este compositor ya aplicado parejo en todas, copiadas a
+   `app/assets/360/<especie>/`, probadas en preview local (200 OK en los 36
+   frames de cada especie, sin errores de consola).
+2. **Íconos PWA regenerados**: `app/icons/icon-512.png`, `icon-192.png` y
+   `apple-touch-icon.png` (180x180) reconstruidos desde
+   `blender/turntable_sakura/hero.png` (el hero NUEVO, post-redondeo/bevel de
+   la ronda anterior — el viejo tenía flores más simples y sin el musgo
+   nuevo). Proceso: PowerShell + System.Drawing — recorta el hero a su
+   bounding box de alpha real, arma un gradiente vertical de 3 paradas
+   reproduciendo los mismos colores del ícono viejo (arriba `#8fb4e6` =
+   theme_color, medio lavanda gris, abajo durazno cálido) y pega el árbol
+   centrado al 66% del ancho del ícono. Ojo con la sintaxis de PowerShell:
+   `New-Object Tipo(a, b - c)` con aritmética inline dentro de los
+   paréntesis rompe (el operador `-` se liga mal con la coma y tira
+   `op_Subtraction` sobre un array) — usar `[Tipo]::new(...)` con variables
+   pre-calculadas evita el problema.
+3. **Roble, doble-chequeo del margen**: inspeccionados a ojo el hero (frame
+   0) + los frames 09, 18 y 27 del turntable (no solo el frame 0), tanto en
+   la geometría vieja como en el render final con glare. El margen superior
+   sigue siendo el más ajustado de las 5 (`0.08` unidades, confirmado de
+   nuevo en el log del render final: `MARGEN ancho: 0.18 | arriba: 0.08 |
+   abajo: 0.8`) pero en los 4 ángulos inspeccionados hay un espacio
+   transparente claro y consistente arriba de la copa — nada roza el borde.
+   Como la rotación es sobre el eje Z, el alto (bbox en Z) no cambia entre
+   frames, así que ese margen es constante en los 36 ángulos, no solo en los
+   4 revisados. Veredicto: margen ajustado pero genuinamente sin clipping,
+   **no se tocó la geometría** (no había evidencia real que lo justificara).
 
 ---
 
