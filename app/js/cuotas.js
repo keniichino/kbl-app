@@ -55,6 +55,42 @@ function proyectarMeses(cuotas, cuantos = 7) {
     .map(([key, v]) => ({ key, label: labelMes(key), ...v }));
 }
 
+function renderResumen(cuotas, primerMes) {
+  const el = $('#cuotas-resumen');
+  if (!el || !primerMes) { if (el) el.innerHTML = ''; return; }
+
+  const porTarjeta = {};
+  for (const c of cuotas) {
+    if (c.estado !== 'activa') continue;
+    const restantes = c.cuota_total - c.cuota_actual + 1;
+    for (let i = 0; i < restantes; i++) {
+      const fecha = addMeses(c.fecha_primer_venc, i);
+      if (mesKey(fecha) !== primerMes.key) continue;
+      porTarjeta[c.tarjeta] = (porTarjeta[c.tarjeta] || 0) + c.monto_cuota;
+    }
+  }
+
+  const total = Object.values(porTarjeta).reduce((a, b) => a + b, 0);
+  const filas = TARJETAS
+    .filter((t) => porTarjeta[t.key])
+    .map((t) => `
+      <div class="resumen-fila">
+        <span class="resumen-fila-emoji">${t.emoji}</span>
+        <span class="resumen-fila-label">${t.label}</span>
+        <span class="resumen-fila-monto">${fmtARS.format(porTarjeta[t.key])}</span>
+      </div>`).join('');
+
+  el.innerHTML = `
+    <div class="cuotas-resumen-wrap">
+      <div class="cuotas-proy-title">Próximo resumen · ${primerMes.label}</div>
+      ${filas}
+      <div class="resumen-total">
+        <span class="resumen-total-label">Total</span>
+        <span class="resumen-total-monto">${fmtARS.format(total)}</span>
+      </div>
+    </div>`;
+}
+
 function render() {
   const cuotas = getCuotas();
   const activas = cuotas.filter((c) => c.estado === 'activa');
@@ -65,6 +101,8 @@ function render() {
   $('#cuotas-total').textContent = primerMes ? fmtARS.format(primerMes.total) : '$ 0';
   $('#cuotas-mes-label').textContent = primerMes ? primerMes.label : new Date().toLocaleDateString('es-AR', { month: 'long', year: 'numeric' });
   $('#cuotas-activas-count').textContent = `${activas.length} cuota${activas.length !== 1 ? 's' : ''} activa${activas.length !== 1 ? 's' : ''}`;
+
+  renderResumen(cuotas, proyeccion[0]);
 
   // Proyección mensual
   const proyHtml = proyeccion.length
