@@ -12,11 +12,19 @@ export const CATEGORIAS = [
   { key: 'otros',      emoji: '📦', label: 'Otros' },
 ];
 
+const TARJETAS_GASTO = [
+  { key: 'visa',     emoji: '💳', label: 'Visa' },
+  { key: 'mac',      emoji: '⬛', label: 'Mac' },
+  { key: 'mp',       emoji: '🔵', label: 'MP' },
+  { key: 'efectivo', emoji: '💵', label: 'Efec' },
+];
+
 const fmtARS = new Intl.NumberFormat('es-AR', {
   style: 'currency', currency: 'ARS', minimumFractionDigits: 0, maximumFractionDigits: 2,
 });
 
 let catSeleccionada = 'comida';
+let tarjetaGastoSel = null;
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -68,10 +76,14 @@ function render() {
       diaActual = g.fecha;
       html += `<div class="gasto-dia">${etiquetaDia(g.fecha)}</div>`;
     }
+    const tk = TARJETAS_GASTO.find((t) => t.key === g.tarjeta);
     html += `
       <div class="gasto-item">
         <span class="gasto-emoji">${emojiDe(g.categoria)}</span>
-        <span class="gasto-desc">${g.descripcion || (CATEGORIAS.find((c) => c.key === g.categoria)?.label ?? 'Gasto')}</span>
+        <div class="gasto-item-mid">
+          <span class="gasto-desc">${g.descripcion || (CATEGORIAS.find((c) => c.key === g.categoria)?.label ?? 'Gasto')}</span>
+          ${tk ? `<span class="gasto-tarjeta-badge">${tk.emoji} ${tk.label}</span>` : ''}
+        </div>
         <span class="gasto-monto">${fmtARS.format(g.monto)}</span>
         <button class="gasto-borrar" data-id="${g.id}" aria-label="Borrar">✕</button>
       </div>`;
@@ -94,6 +106,7 @@ function agregar() {
     monto,
     descripcion: $('#gasto-desc').value.trim(),
     categoria: catSeleccionada,
+    tarjeta: tarjetaGastoSel,
     fecha,
     ts: Date.now(),
   });
@@ -108,11 +121,28 @@ export function initGastos() {
     .map((c) => `<button class="chip cat-chip ${c.key === catSeleccionada ? 'selected' : ''}" data-cat="${c.key}">${c.emoji} ${c.label}</button>`)
     .join('');
 
+  $('#gasto-tarjeta-chips').innerHTML = TARJETAS_GASTO
+    .map((t) => `<button class="chip tarjeta-chip" data-tk="${t.key}">${t.emoji} ${t.label}</button>`)
+    .join('');
+
   $('#cat-chips').addEventListener('click', (e) => {
     const chip = e.target.closest('.cat-chip');
     if (!chip) return;
     catSeleccionada = chip.dataset.cat;
     document.querySelectorAll('.cat-chip').forEach((c) => c.classList.toggle('selected', c === chip));
+  });
+
+  $('#gasto-tarjeta-chips').addEventListener('click', (e) => {
+    const chip = e.target.closest('.tarjeta-chip');
+    if (!chip) return;
+    const key = chip.dataset.tk;
+    if (tarjetaGastoSel === key) {
+      tarjetaGastoSel = null;
+      document.querySelectorAll('.tarjeta-chip').forEach((c) => c.classList.remove('selected'));
+    } else {
+      tarjetaGastoSel = key;
+      document.querySelectorAll('.tarjeta-chip').forEach((c) => c.classList.toggle('selected', c === chip));
+    }
   });
 
   // Separador de miles en vivo: 1234567 → 1.234.567 (coma para decimales)

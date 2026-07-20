@@ -600,7 +600,10 @@ body[data-phase="noche"] .tabbar { background: linear-gradient(150deg, rgba(255,
   box-shadow: 0 4px 12px rgba(35,64,50,.06);
 }
 .gasto-emoji { font-size: 1.2rem; }
-.gasto-desc { flex: 1; font-weight: 800; font-size: .95rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gasto-item-mid { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.gasto-desc { font-weight: 800; font-size: .95rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gasto-tarjeta-badge { font-size: .7rem; color: var(--ink-soft); font-weight: 600; }
+.gasto-tarjeta-row { border-top: 1px solid rgba(0,0,0,.06); padding-top: 8px; margin-top: -2px; }
 .gasto-monto { font-weight: 800; font-size: .95rem; }
 .gasto-borrar {
   border: none; background: rgba(0,0,0,.06);
@@ -889,3 +892,138 @@ body[data-phase="noche"] .tabbar { background: linear-gradient(150deg, rgba(255,
 .cuota-progress-bar { height: 100%; background: var(--grass); border-radius: 2px; transition: width .4s ease; }
 .cuota-progress-label { font-size: .73rem; color: var(--ink-soft); font-variant-numeric: tabular-nums; }
 .cuotas-empty-sub { font-size: .85rem; color: var(--ink-soft); text-align: center; padding: 8px 0; }
+
+/* ====== Theme Toggle Button ====== */
+.theme-toggle {
+  position: fixed;
+  top: 14px; right: 14px;
+  z-index: 100;
+  width: 34px; height: 34px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255,255,255,.55);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  font-size: 1rem;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 2px 8px rgba(0,0,0,.12);
+  transition: background .2s, transform .15s;
+  line-height: 1;
+}
+.theme-toggle:active { transform: scale(.9); }
+
+/* ====== DARK MODE — Ejecutivo ====== */
+body[data-theme="dark"] {
+  --sky: linear-gradient(160deg, #0d1117 0%, #0f1825 55%, #131c30 100%);
+  --ink: #dde4ef;
+  --ink-soft: #8b9aaf;
+  --card: rgba(255,255,255,.06);
+  --grass: #34d399;
+  --grass-deep: #10b981;
+  --accent: #f59e0b;
+  --accent-deep: #60a5fa;
+  --shadow-soft: 0 8px 28px rgba(0,0,0,.55);
+}
+
+body[data-theme="dark"] .theme-toggle {
+  background: rgba(255,255,255,.1);
+  border: 1px solid rgba(255,255,255,.12);
+}
+
+/* Panel Foco (Liquid Glass → Dark Glass) */
+body[data-theme="dark"] .panel {
+  background: linear-gradient(150deg, rgba(255,255,255,.07) 0%, rgba(255,255,255,.03) 55%, rgba(255,255,255,.05) 100%);
+  border-color: rgba(255,255,255,.1);
+  box-shadow: 0 24px 50px rgba(0,0,0,.5), inset 0 1.5px 0 rgba(255,255,255,.12);
+}
+
+/* Tabbar */
+body[data-theme="dark"] .tabbar {
+  background: rgba(10,14,22,.92) !important;
+  border-top-color: rgba(255,255,255,.08);
+  box-shadow: none;
+}
+body[data-theme="dark"] .tab { color: #4a5568; }
+body[data-theme="dark"] .tab.active { color: #60a5fa; }
+
+/* Chips */
+body[data-theme="dark"] .chip {
+  background: rgba(255,255,255,.08);
+  color: var(--ink-soft);
+  border: 1px solid rgba(255,255,255,.08);
+}
+body[data-theme="dark"] .chip.selected {
+  background: rgba(96,165,250,.2);
+  color: #60a5fa;
+  border-color: rgba(96,165,250,.4);
+}
+
+/* Botón primario */
+body[data-theme="dark"] .btn-primary {
+  background: linear-gradient(135deg, #1d4ed8 0%, #3b82f6 100%);
+  box-shadow: 0 4px 14px rgba(59,130,246,.35);
+}
+
+/* Gastos — hero */
+body[data-theme="dark"] .gasto-hero {
+  background: rgba(255,255,255,.04);
+  border: 1px solid rgba(255,255,255,.08);
+}
+
+/* Gastos — form */
+body[data-theme="dark"] .gasto-form {
+  background: rgba(255,255,255,.04);
+  border: 1px solid rgba(255,255,255,.07);
+}
+body[data-theme="dark"] .gasto-form input {
+  background: rgba(255,255,255,.07);
+  color: var(--ink);
+  border-color: rgba(255,255,255,.1);
+}
+body[data-theme="dark"] .gasto-form input::placeholder { color: #4a5568; }
+body[data-theme="dark"] .gasto-tarjeta-row { border-top-color: rgba(255,255,255,.07); }
+
+/* Gastos — lista */
+body[data-theme="dark"] .gasto-dia { color: #4a5568; }
+body[data-theme="dark"] .gasto-item {
+  background: rgba(255,255,255,.05);
+  border-color: rgba(255,255,255,.07);
+  box-shadow: none;
+}
+body[data-theme="dark"] .gasto-borrar {
+  background: rgba(255,255,255,.08);
+  color: var(--ink-soft);
+}
+
+/* Cuotas — bloques */
+body[data-theme="dark"] .cuotas-proy-wrap,
+body[data-theme="dark"] .cuotas-resumen-wrap {
+  background: rgba(255,255,255,.04);
+  border: 1px solid rgba(255,255,255,.07);
+}
+body[data-theme="dark"] .proy-barra { background: #3b82f6; }
+body[data-theme="dark"] .proy-barra-wrap { background: rgba(255,255,255,.07); }
+body[data-theme="dark"] .resumen-total { border-top-color: rgba(255,255,255,.1); }
+body[data-theme="dark"] .resumen-total-monto { color: #60a5fa; }
+
+body[data-theme="dark"] .cuota-form-wrap {
+  background: rgba(255,255,255,.04);
+  border: 1px solid rgba(255,255,255,.07);
+}
+body[data-theme="dark"] .cuota-form-toggle { color: var(--ink); }
+body[data-theme="dark"] .cuota-form-inner input {
+  background: rgba(255,255,255,.07);
+  color: var(--ink);
+  border-color: rgba(255,255,255,.1);
+}
+
+body[data-theme="dark"] .cuota-card {
+  background: rgba(255,255,255,.05);
+  border: 1px solid rgba(255,255,255,.08);
+  box-shadow: none;
+}
+body[data-theme="dark"] .cuota-progress-wrap { background: rgba(255,255,255,.08); }
+body[data-theme="dark"] .cuota-progress-bar { background: #3b82f6; }
+body[data-theme="dark"] .cuota-ok { background: rgba(52,211,153,.15); color: #34d399; }
+body[data-theme="dark"] .cuota-del { background: rgba(248,113,113,.15); color: #f87171; }

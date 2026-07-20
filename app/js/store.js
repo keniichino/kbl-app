@@ -156,6 +156,7 @@ const toRemoteGasto = (g) => ({
   monto: g.monto,
   descripcion: g.descripcion || null,
   categoria: g.categoria,
+  tarjeta: g.tarjeta || null,
   fecha: g.fecha,
   created_at: new Date(g.ts).toISOString(),
 });
@@ -164,6 +165,7 @@ const fromRemoteGasto = (r) => ({
   monto: Number(r.monto),
   descripcion: r.descripcion || '',
   categoria: r.categoria,
+  tarjeta: r.tarjeta || null,
   fecha: r.fecha,
   ts: Date.parse(r.created_at),
 });

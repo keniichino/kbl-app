@@ -397,6 +397,19 @@ async function boot() {
 
 boot();
 
+// ---------- Dark mode toggle ----------
+(function () {
+  const btn = $('#theme-toggle');
+  const saved = localStorage.getItem('kbl.theme');
+  const apply = (dark) => {
+    document.body.setAttribute('data-theme', dark ? 'dark' : 'light');
+    btn.textContent = dark ? '☀️' : '🌙';
+    localStorage.setItem('kbl.theme', dark ? 'dark' : 'light');
+  };
+  apply(saved === 'dark');
+  btn.addEventListener('click', () => apply(document.body.dataset.theme !== 'dark'));
+})();
+
 // ---------- PWA ----------
 if ('serviceWorker' in navigator && location.protocol === 'https:') {
   navigator.serviceWorker.register('sw.js').catch(() => {});
