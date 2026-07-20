@@ -137,11 +137,54 @@ if SPECIES == 'flor':
             print(f"  [HIDDEN] {name}")
 
 elif SPECIES == 'bonsai':
-    # Fix: bajar el tronco para ocultar el hueco negro en la base
+    import bmesh as _bmesh
+
     tronco = bpy.data.objects.get('tronco')
     if tronco:
+        # 1. Bajar tronco para que la base quede bien plantada en la arena
         tronco.location.z -= 0.45
-        print(f"  [FIX] tronco.z -= 0.45 (oculta hueco)")
+        print(f"  [FIX] tronco.z -= 0.45")
+
+        # 2. Sellar TODOS los bordes abiertos del tronco hueco
+        #    (360 boundary edges de z=-0.23 a z=1.90 → interior oscuro visible desde arriba)
+        bm = _bmesh.new()
+        bm.from_mesh(tronco.data)
+        bm.verts.ensure_lookup_table()
+        bm.edges.ensure_lookup_table()
+
+        boundary = [e for e in bm.edges if len(e.link_faces) == 1]
+        print(f"  [INFO] tronco: {len(boundary)} boundary edges encontrados")
+
+        if boundary:
+            faces_added = 0
+            try:
+                res = _bmesh.ops.edgeloop_fill(bm, edges=boundary, mat_nr=0, use_smooth=False)
+                new_faces = res.get('faces', [])
+                if new_faces:
+                    _bmesh.ops.recalc_face_normals(bm, faces=new_faces)
+                    faces_added = len(new_faces)
+                    print(f"  [FIX] edgeloop_fill: {faces_added} caras de cierre")
+            except Exception as ex:
+                print(f"  [WARN] edgeloop_fill falló ({ex}), usando fan fill")
+                all_bverts = list({v for e in boundary for v in e.verts})
+                cx = sum(v.co.x for v in all_bverts) / len(all_bverts)
+                cy = sum(v.co.y for v in all_bverts) / len(all_bverts)
+                cz = sum(v.co.z for v in all_bverts) / len(all_bverts)
+                center_v = bm.verts.new((cx, cy, cz))
+                bm.verts.ensure_lookup_table()
+                for e in boundary:
+                    try:
+                        bm.faces.new([e.verts[0], e.verts[1], center_v])
+                        faces_added += 1
+                    except Exception:
+                        pass
+                _bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+                print(f"  [FIX] fan fill: {faces_added} triángulos")
+
+            bm.to_mesh(tronco.data)
+            tronco.data.update()
+
+        bm.free()
 
     # Ocultar todos los objetos problemáticos
     HIDE_BONSAI = [
