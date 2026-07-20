@@ -1,9 +1,14 @@
 """
+render_species.py v3
 Uso:
   blender --background ARCHIVO.blend --python render_species.py -- SPECIES OUTPUT_DIR
 
-Ejemplo:
-  blender --background flor_isla.blend --python render_species.py -- flor C:/ruta/flor
+Mejoras v3:
+  - 128 samples (era 64): renders más limpios, sin ruido
+  - suavizar_base(): smooth shading + SubSurf en 'tierra' para TODOS los modelos
+  - Bonsai: tronco bajado 0.2u para ocultar el hueco negro en la base
+  - Bonsai: hide completa (acento × 10, hoja_bonsai × 5, racimo × 7)
+  - Flor: petalo_suelto × 7 ocultos (manchas rojas sobre el pasto)
 """
 import bpy
 import sys
@@ -25,23 +30,21 @@ FRAMES   = 36
 os.makedirs(OUT_DIR, exist_ok=True)
 scene = bpy.context.scene
 
-# ===== RENDER SETTINGS (igual al original para consistencia) =====
+# ===== RENDER SETTINGS =====
 scene.render.engine = 'CYCLES'
 scene.render.film_transparent = True
 scene.render.image_settings.file_format = 'WEBP'
-scene.render.image_settings.quality = 90
+scene.render.image_settings.quality = 92
 scene.render.resolution_x = 800
 scene.render.resolution_y = 1000
 
-# Samples: suficientes para calidad limpia sin partículas ruidosas
-scene.cycles.samples = 64
+scene.cycles.samples = 128
 scene.cycles.use_denoising = True
 
 # GPU si está disponible
 prefs = bpy.context.preferences.addons.get('cycles', None)
 if prefs:
     cprefs = prefs.preferences
-    # Intentar OptiX/CUDA/HIP/Metal
     for compute_type in ('OPTIX', 'CUDA', 'HIP', 'METAL'):
         try:
             cprefs.compute_device_type = compute_type
@@ -58,7 +61,7 @@ if prefs:
 
 # ===== HELPERS =====
 def set_mix_colors(mat_name, c1, c2):
-    """Cambia Color1 y Color2 del nodo Mix (Legacy) que alimenta al Principled."""
+    """Cambia Color1/Color2 del nodo MIX_RGB → Principled."""
     mat = bpy.data.materials.get(mat_name)
     if not mat:
         print(f"  [WARN] {mat_name!r} no encontrado"); return
@@ -72,7 +75,7 @@ def set_mix_colors(mat_name, c1, c2):
     print(f"  [WARN] {mat_name} sin nodo MIX_RGB")
 
 def set_color(mat_name, r, g, b):
-    """Cambia el Base Color del Principled (cuando no hay Mix)."""
+    """Cambia Base Color del Principled BSDF."""
     mat = bpy.data.materials.get(mat_name)
     if not mat:
         print(f"  [WARN] {mat_name!r} no encontrado"); return
@@ -84,24 +87,48 @@ def set_color(mat_name, r, g, b):
                 return
     mat.diffuse_color = (r, g, b, 1.0)
 
+def suavizar_base():
+    """
+    Aplica smooth shading + Subdivision Surface a 'tierra'
+    para redondear la base piramidal angular de todos los modelos.
+    """
+    obj = bpy.data.objects.get('tierra')
+    if not obj or obj.type != 'MESH':
+        print("  [SKIP] 'tierra' no encontrado")
+        return
+    # Smooth shading por polígono (sin cambiar geometría)
+    for poly in obj.data.polygons:
+        poly.use_smooth = True
+    obj.data.update()
+    # Subdivisión Catmull-Clark: redondea las aristas duras
+    mod = obj.modifiers.new("Subsurf_Base", type='SUBSURF')
+    mod.levels = 1
+    mod.render_levels = 2
+    mod.subdivision_type = 'CATMULL_CLARK'
+    print("  [OK] tierra: smooth + SubSurf(render=2) aplicado")
+
+
+# ===== SUAVIZADO DE BASE (todas las especies) =====
+print(f"\n=== BASE SUAVIZADA ===")
+suavizar_base()
+
 
 # ===== MODIFICACIONES POR ESPECIE =====
 print(f"\n=== MODIFICACIONES PARA: {SPECIES} ===")
 
 if SPECIES == 'flor':
-    # Cosmos rosa → Rosa roja (estilizada lowpoly)
-    # Los materiales de pétalos usan Fresnel → MIX_RGB → Principled
-    # Hay que cambiar Color1 (zona iluminada/fresnel) y Color2 (zona oscura/interior)
-    set_mix_colors('petalo_deep',   (0.60, 0.02, 0.02), (0.72, 0.06, 0.05))  # interior oscuro
-    set_mix_colors('petalo_mid',    (0.75, 0.04, 0.04), (0.85, 0.10, 0.07))  # cuerpo principal
-    set_mix_colors('petalo_light',  (0.82, 0.06, 0.05), (0.92, 0.16, 0.10))  # borde iluminado
-    # Centro: dorado cálido (estambre de rosa)
+    # Pétalos: cosmos rosa → rosa roja
+    # (nota: geometría es un cosmos de 7 pétalos, no una rosa en forma)
+    set_mix_colors('petalo_deep',   (0.55, 0.01, 0.01), (0.68, 0.04, 0.04))
+    set_mix_colors('petalo_mid',    (0.72, 0.03, 0.03), (0.82, 0.08, 0.06))
+    set_mix_colors('petalo_light',  (0.80, 0.05, 0.04), (0.90, 0.14, 0.09))
+    # Centro: dorado cálido (estambre)
     set_color('centro_flor',        0.95, 0.82, 0.10)
-    set_color('centro_flor_oscuro', 0.80, 0.52, 0.05)
-    # Isla: pasto verde (la flor tenía tierra oscura, le damos vida)
-    set_color('pasto',       0.15, 0.42, 0.10)
-    set_color('pasto_borde', 0.10, 0.32, 0.08)
-    # Ocultar pétalos sueltos: con color rojo quedan como manchas/artefactos sobre el pasto
+    set_color('centro_flor_oscuro', 0.78, 0.48, 0.04)
+    # Isla verde vivo
+    set_color('pasto',       0.12, 0.38, 0.08)
+    set_color('pasto_borde', 0.08, 0.28, 0.06)
+    # Ocultar pétalos caídos: con rojo intenso → manchas sobre pasto verde
     for i in range(7):
         name = 'petalo_suelto' if i == 0 else f'petalo_suelto.{i:03d}'
         obj = bpy.data.objects.get(name)
@@ -110,16 +137,22 @@ if SPECIES == 'flor':
             print(f"  [HIDDEN] {name}")
 
 elif SPECIES == 'bonsai':
-    # Ocultar fragmentos rojos (bonsai_acento), hojas sueltas, y racimos fuera de lugar
+    # Fix: bajar el tronco para ocultar el hueco negro en la base
+    tronco = bpy.data.objects.get('tronco')
+    if tronco:
+        tronco.location.z -= 0.45
+        print(f"  [FIX] tronco.z -= 0.45 (oculta hueco)")
+
+    # Ocultar todos los objetos problemáticos
     HIDE_BONSAI = [
-        # hojas de acento: material rojo oscuro → fragmentos visibles en la copa
+        # hoja_acento: material rojo → fragmentos en la copa
         'hoja_acento_bonsai', 'hoja_acento_bonsai.001', 'hoja_acento_bonsai.002',
         'hoja_acento_bonsai.003', 'hoja_acento_bonsai.004', 'hoja_acento_bonsai.005',
         'hoja_acento_bonsai.006', 'hoja_acento_bonsai.007', 'hoja_acento_bonsai.008',
         'hoja_acento_bonsai.009',
-        # hojas sueltas: mismo material rojo, algunas fuera de la maceta
+        # hoja_bonsai: mismo material rojo
         'hoja_bonsai', 'hoja_bonsai.001', 'hoja_bonsai.002', 'hoja_bonsai.003', 'hoja_bonsai.004',
-        # racimos: usan material copa (teal) y quedan como manchas en la base del tronco
+        # racimo: material copa (teal) → manchas en base del tronco
         'racimo', 'racimo.001', 'racimo.002', 'racimo.003', 'racimo.004', 'racimo.005', 'racimo.006',
     ]
     for name in HIDE_BONSAI:
@@ -129,7 +162,7 @@ elif SPECIES == 'bonsai':
             print(f"  [HIDDEN] {name}")
 
 else:
-    print(f"  (sin modificaciones para {SPECIES!r})")
+    print(f"  (sin modificaciones adicionales para {SPECIES!r})")
 
 
 # ===== ORBITAR CÁMARA Y RENDERIZAR =====
@@ -145,14 +178,12 @@ if not camera:
     print("ERROR: no hay cámara en la scene")
     sys.exit(1)
 
-# Centro visual del modelo (el pivot está en el origen)
 TARGET = mathutils.Vector((0.0, 0.0, 0.5))
-
 cam_start = camera.location.copy()
-dist = math.sqrt(cam_start.x**2 + cam_start.y**2)
+dist  = math.sqrt(cam_start.x**2 + cam_start.y**2)
 height = cam_start.z
 
-print(f"\n=== RENDER: {FRAMES} frames orbita, dist={dist:.3f}, height={height:.3f} ===")
+print(f"\n=== RENDER: {FRAMES} frames, dist={dist:.3f}, height={height:.3f}, samples=128 ===")
 print(f"  Output: {OUT_DIR}")
 
 for i in range(FRAMES):
@@ -161,9 +192,8 @@ for i in range(FRAMES):
     camera.location.y = -dist * math.cos(angle)
     camera.location.z = height
 
-    # Track al centro visual
     direction = TARGET - camera.location
-    rot_quat = direction.to_track_quat('-Z', 'Y')
+    rot_quat  = direction.to_track_quat('-Z', 'Y')
     camera.rotation_euler = rot_quat.to_euler()
 
     filename = f"{str(i).zfill(2)}.webp"
