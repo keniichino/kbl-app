@@ -117,24 +117,108 @@ suavizar_base()
 print(f"\n=== MODIFICACIONES PARA: {SPECIES} ===")
 
 if SPECIES == 'flor':
-    # Pétalos: cosmos rosa → rosa roja
-    # (nota: geometría es un cosmos de 7 pétalos, no una rosa en forma)
-    set_mix_colors('petalo_deep',   (0.55, 0.01, 0.01), (0.68, 0.04, 0.04))
-    set_mix_colors('petalo_mid',    (0.72, 0.03, 0.03), (0.82, 0.08, 0.06))
-    set_mix_colors('petalo_light',  (0.80, 0.05, 0.04), (0.90, 0.14, 0.09))
-    # Centro: dorado cálido (estambre)
-    set_color('centro_flor',        0.95, 0.82, 0.10)
-    set_color('centro_flor_oscuro', 0.78, 0.48, 0.04)
-    # Isla verde vivo
+    import bmesh as _bm
+
+    # ── Colores rojo argentina (muy oscuro adentro, rojo vivo afuera) ───────
+    set_mix_colors('petalo_deep',   (0.38, 0.00, 0.00), (0.52, 0.01, 0.01))
+    set_mix_colors('petalo_mid',    (0.55, 0.01, 0.01), (0.68, 0.04, 0.03))
+    set_mix_colors('petalo_light',  (0.68, 0.03, 0.02), (0.80, 0.08, 0.04))
     set_color('pasto',       0.12, 0.38, 0.08)
     set_color('pasto_borde', 0.08, 0.28, 0.06)
-    # Ocultar pétalos caídos: con rojo intenso → manchas sobre pasto verde
-    for i in range(7):
-        name = 'petalo_suelto' if i == 0 else f'petalo_suelto.{i:03d}'
-        obj = bpy.data.objects.get(name)
-        if obj:
-            obj.hide_render = True
-            print(f"  [HIDDEN] {name}")
+
+    # ── Ocultar toda la geometría del cosmos ─────────────────────────────────
+    PREFIJOS_COSMOS = ['petalo_outer', 'petalo_suelto', 'centro', 'floret', 'antera', 'polen']
+    for obj in bpy.data.objects:
+        for pfx in PREFIJOS_COSMOS:
+            if obj.name == pfx or obj.name.startswith(pfx + '.'):
+                obj.hide_render = True
+                print(f"  [HIDDEN] {obj.name}")
+                break
+
+    # ── Posición de la cabeza de flor (top del tallo) ────────────────────────
+    dep = bpy.context.evaluated_depsgraph_get()
+    cabeza = bpy.data.objects.get('cabeza')
+    if cabeza:
+        try:
+            head = cabeza.evaluated_get(dep).matrix_world.translation.copy()
+        except Exception:
+            head = mathutils.Vector((cabeza.location.x, cabeza.location.y, cabeza.location.z))
+    else:
+        head = mathutils.Vector((0.12, -0.36, 2.52))
+    print(f"  [INFO] Rosa: centro en ({head.x:.3f}, {head.y:.3f}, {head.z:.3f})")
+
+    # ── Función: mesh de un pétalo de rosa curvado ───────────────────────────
+    def make_petal_bm(pw, ph, prof):
+        bm = _bm.new()
+        FS, CS = 8, 5
+        rows = []
+        for rr in range(FS + 1):
+            t = rr / FS
+            # Ancho: estrecho en base y punta, máximo a 2/3 de altura
+            rw = pw * math.sin(math.pi * t * 0.88 + 0.06) * (1 + 0.30 * t * (1 - t) * 4)
+            ry = ph * t
+            # Curvatura trasera (pétalo se inclina hacia atrás en la punta)
+            rz = prof * t * t * math.sin(math.pi * t)
+            vrow = []
+            for cc in range(CS + 1):
+                u = cc / CS - 0.5
+                # Cupping lateral (bordes se curvan levemente hacia adelante)
+                zc = -prof * 0.35 * u * u * t
+                vrow.append(bm.verts.new((u * rw * 2, ry, rz + zc)))
+            rows.append(vrow)
+        for rr in range(FS):
+            for cc in range(CS):
+                f = bm.faces.new([rows[rr][cc], rows[rr][cc + 1],
+                                  rows[rr + 1][cc + 1], rows[rr + 1][cc]])
+                f.smooth = True
+        _bm.ops.recalc_face_normals(bm, faces=bm.faces)
+        return bm
+
+    # ── Capas de la rosa espiral ─────────────────────────────────────────────
+    # (n_petals, radius, dz, tilt°, petal_w, petal_h, prof, material)
+    # Escala ×3 respecto al cosmos original (radio exterior ~0.65u).
+    # dz comprimido + centro hundido: capullo compacto que ABRE hacia arriba
+    # (el tilt se NIEGA abajo para que los pétalos se abran hacia arriba/afuera).
+    capas_rosa = [
+        (3,  0.000, 0.150,  6,  0.090, 0.300, 0.024, 'petalo_deep'),
+        (5,  0.060, 0.140, 12,  0.120, 0.380, 0.039, 'petalo_deep'),
+        (5,  0.150, 0.130, 22,  0.165, 0.450, 0.051, 'petalo_deep'),
+        (7,  0.255, 0.100, 34,  0.204, 0.510, 0.063, 'petalo_mid'),
+        (8,  0.375, 0.060, 47,  0.246, 0.555, 0.075, 'petalo_mid'),
+        (9,  0.504, 0.025, 59,  0.276, 0.588, 0.084, 'petalo_light'),
+        (9,  0.654, 0.000, 69,  0.291, 0.606, 0.093, 'petalo_light'),
+    ]
+
+    total_p = 0
+    for idx, (n, r, dz, tilt_deg, pw, ph, prof, mat_name) in enumerate(capas_rosa):
+        tilt = -math.radians(tilt_deg)  # negativo: la rosa abre hacia arriba, no cuelga
+        # Offset angular entre capas para efecto espiral Fibonacci
+        offset = idx * math.pi / max(n, 1) + idx * 0.20
+        for i in range(n):
+            theta = (2 * math.pi * i / n + offset) if n > 1 else 0.0
+            bm = make_petal_bm(pw, ph, prof)
+            mesh = bpy.data.meshes.new(f"rosa_{idx}_{i}")
+            bm.to_mesh(mesh); bm.free()
+            # SubSurf para suavizar curvas en render
+            obj = bpy.data.objects.new(f"rosa_{idx}_{i}", mesh)
+            scene.collection.objects.link(obj)
+            mod = obj.modifiers.new("SS", type='SUBSURF')
+            mod.levels = 0
+            mod.render_levels = 2
+            mod.subdivision_type = 'CATMULL_CLARK'
+            # Posición y rotación
+            obj.location = (
+                head.x + r * math.cos(theta),
+                head.y + r * math.sin(theta),
+                head.z + dz
+            )
+            obj.rotation_euler = (tilt, 0.0, theta + math.pi * 0.5)
+            mat = bpy.data.materials.get(mat_name)
+            if mat:
+                obj.data.materials.append(mat)
+            total_p += 1
+
+    print(f"  [OK] Rosa argentina: {total_p} pétalos, {len(capas_rosa)} capas")
 
 elif SPECIES == 'bonsai':
     import bmesh as _bmesh
