@@ -1,5 +1,6 @@
 // ====== KBL App — módulo Foco v1 ======
-import { getSessions, addSession, getActive, setActive, getStats, initSync } from './store.js';
+import { getSessions, addSession, getActive, setActive, getStats, initSync, clearLocalData } from './store.js';
+import { getSession, signIn, signUp, signOut, mensajeError } from './auth.js';
 import { SPECIES, renderTree, miniTree, speciesCard, dayPhase } from './tree.js';
 import { initGastos, renderGastos } from './gastos.js';
 import { initViewer360 } from './viewer360.js';
@@ -369,7 +370,7 @@ setInterval(() => {
   if (!tickInterval && !el.idle.hidden) renderTree(svg, 0, SPECIES[selectedMin], 'seed', { soloCielo: true });
 }, 5 * 60 * 1000);
 
-async function boot() {
+async function arrancarApp() {
   applyPhase();
   initGastos();
   initNotas();
@@ -395,7 +396,105 @@ async function boot() {
   }
 }
 
-boot();
+// ---------- Gate de login: sin sesión, la app no arranca ----------
+function mostrarLogin() {
+  const overlay = $('#auth-overlay');
+  const form = $('#auth-form');
+  const email = $('#auth-email');
+  const pass = $('#auth-pass');
+  const submit = $('#auth-submit');
+  const msg = $('#auth-msg');
+  const sub = $('#auth-sub');
+  const switchBtn = $('#auth-switch');
+  let modo = 'login'; // 'login' | 'signup'
+
+  const setMsg = (texto, ok = false) => {
+    msg.textContent = texto || '';
+    msg.hidden = !texto;
+    msg.classList.toggle('ok', ok);
+  };
+
+  const aplicarModo = () => {
+    const esLogin = modo === 'login';
+    submit.textContent = esLogin ? 'Entrar' : 'Crear cuenta';
+    sub.textContent = esLogin
+      ? 'Entrá para sincronizar tu foco, gastos y notas entre tus dispositivos.'
+      : 'Creá tu cuenta. Tus datos quedan solo tuyos, aislados del resto.';
+    switchBtn.textContent = esLogin ? '¿No tenés cuenta? Crear una' : '¿Ya tenés cuenta? Entrar';
+    pass.autocomplete = esLogin ? 'current-password' : 'new-password';
+    setMsg('');
+  };
+
+  switchBtn.addEventListener('click', () => {
+    modo = modo === 'login' ? 'signup' : 'login';
+    aplicarModo();
+  });
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const mail = email.value.trim();
+    if (!mail || pass.value.length < 6) {
+      setMsg('Poné un email y una contraseña de al menos 6 caracteres.');
+      return;
+    }
+    overlay.classList.add('busy');
+    setMsg('');
+    try {
+      if (modo === 'login') {
+        await signIn(mail, pass.value);
+        location.reload(); // arranca limpio con la sesión ya persistida
+      } else {
+        const { needsConfirm } = await signUp(mail, pass.value);
+        if (needsConfirm) {
+          setMsg('Cuenta creada. Revisá tu mail para confirmarla y después entrá.', true);
+          modo = 'login';
+          aplicarModo();
+        } else {
+          location.reload();
+        }
+      }
+    } catch (err) {
+      setMsg(mensajeError(err));
+    } finally {
+      overlay.classList.remove('busy');
+    }
+  });
+
+  aplicarModo();
+  overlay.hidden = false;
+}
+
+async function cerrarSesion() {
+  const ok = await confirmar({
+    titulo: '¿Cerrar sesión?',
+    mensaje: 'Se borran los datos de este dispositivo. Vuelven al entrar de nuevo (están en la nube).',
+    accion: 'Salir',
+    destructivo: true,
+  });
+  if (!ok) return;
+  await signOut();
+  clearLocalData();
+  localStorage.removeItem('kbl.uid');
+  location.reload();
+}
+$('#btn-logout')?.addEventListener('click', cerrarSesion);
+
+// ---------- Decisión de arranque: ¿hay sesión? ----------
+async function init() {
+  let sesion = null;
+  try {
+    sesion = await getSession();
+  } catch {
+    /* sin red y sin sesión previa: cae al login igual */
+  }
+  if (sesion) {
+    arrancarApp();
+  } else {
+    mostrarLogin();
+  }
+}
+
+init();
 
 // ---------- Dark mode toggle ----------
 (function () {

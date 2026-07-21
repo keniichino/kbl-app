@@ -4,8 +4,7 @@
 // Realtime: cambios hechos en otro dispositivo llegan por WebSocket,
 // se aplican a localStorage y se avisa a la UI vía callback.
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
+import { supabase } from './supabaseClient.js';
 
 const KEYS = {
   sessions: 'kbl.foco.sessions',
@@ -13,10 +12,19 @@ const KEYS = {
   gastos: 'kbl.gastos',
   notas: 'kbl.notas',
   cuotas: 'kbl.cuotas',
+  uid: 'kbl.uid', // dueño de los datos locales actuales (para detectar cambio de cuenta)
 };
 
-const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 let notify = () => {};
+let currentUid = null; // user autenticado; el server igual valida vía RLS
+
+// Borra todos los datos locales (al cerrar sesión o al entrar con otra cuenta
+// en el mismo dispositivo, para no mezclar datos de dos usuarios).
+export function clearLocalData() {
+  [KEYS.sessions, KEYS.active, KEYS.gastos, KEYS.notas, KEYS.cuotas].forEach(
+    (k) => localStorage.removeItem(k)
+  );
+}
 
 function read(key, fallback) {
   try {
@@ -74,14 +82,16 @@ export function getActive() {
 export function setActive(session) {
   if (session === null) localStorage.removeItem(KEYS.active);
   else write(KEYS.active, session);
+  if (!currentUid) return; // sin sesión no hay a dónde empujar
+  // Una fila por usuario (PK = user_id): upsert en vez de update a id=1.
   supabase
     .from('foco_active')
-    .update({
+    .upsert({
+      user_id: currentUid,
       start_ts: session ? new Date(session.startTs).toISOString() : null,
       duration_min: session ? session.durationMin : null,
       updated_at: new Date().toISOString(),
-    })
-    .eq('id', 1)
+    }, { onConflict: 'user_id' })
     .then(() => {}, () => {});
 }
 
@@ -98,11 +108,21 @@ function applyRemoteActive(row) {
 export async function initSync(onRemoteChange) {
   if (onRemoteChange) notify = onRemoteChange;
 
+  // Quién es el usuario logueado. Si es distinto al dueño de los datos locales
+  // (cambió de cuenta en este dispositivo), limpiamos lo local antes de traer
+  // lo suyo, para no mezclar los datos de dos personas.
+  const { data: { user } } = await supabase.auth.getUser();
+  currentUid = user?.id ?? null;
+  if (currentUid && localStorage.getItem(KEYS.uid) !== currentUid) {
+    clearLocalData();
+    localStorage.setItem(KEYS.uid, currentUid);
+  }
+
   // Pull inicial con timeout: sin red, la app arranca igual con lo local
   try {
     const pull = Promise.all([
       supabase.from('foco_sessions').select('*').order('start_ts'),
-      supabase.from('foco_active').select('*').eq('id', 1).maybeSingle(),
+      supabase.from('foco_active').select('*').maybeSingle(), // RLS filtra a la fila del usuario
       supabase.from('gastos').select('*'),
       supabase.from('notas').select('*'),
       supabase.from('cuotas').select('*'),
@@ -146,10 +166,8 @@ export async function initSync(onRemoteChange) {
 }
 
 // --- Gastos: [{ id, monto, descripcion, categoria, fecha, ts }] ---
-// Sync con Supabase (misma tabla abierta que Foco, sin login todavía).
-// Nota de privacidad: hasta que exista Auth+RLS, cualquiera con la anon
-// key pública del repo podría leer esta tabla. Aceptado por Keni para
-// uso personal; se cierra con candado real cuando entren más usuarios.
+// Sync con Supabase. El aislamiento por usuario lo garantiza RLS en el server
+// (user_id = auth.uid()); el cliente ni manda user_id, lo pone el default.
 
 const toRemoteGasto = (g) => ({
   id: g.id,
