@@ -14,3 +14,10 @@ desktop.ini
 blender/addon.py
 blender/*.png
 blender/turntable/
+
+# Andamiaje de desarrollo (diagnostico y borradores, no van al repo)
+# test_rosa.py SI se versiona: es la herramienta de validacion de 1 frame
+blender/inspect_*.py
+blender/render_test.py
+demos/
+n8n/
