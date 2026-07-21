@@ -38,9 +38,31 @@ export async function signOut() {
   await supabase.auth.signOut();
 }
 
+// Reenvía el mail de confirmación de una cuenta que quedó sin confirmar.
+export async function reenviarConfirmacion(email) {
+  const { error } = await supabase.auth.resend({ type: 'signup', email });
+  if (error) throw error;
+}
+
+// True si el error es "la cuenta existe pero falta confirmar el mail".
+// Sirve para que la UI ofrezca reenviar la confirmación.
+export function esEmailSinConfirmar(err) {
+  const m = (err?.message || '').toLowerCase();
+  return m.includes('not confirmed') || m.includes('email not confirmed');
+}
+
 // Traduce los errores de Supabase a mensajes en criollo para la UI.
 export function mensajeError(err) {
   const m = (err?.message || '').toLowerCase();
+  if (esEmailSinConfirmar(err)) {
+    return 'Tu cuenta existe pero falta confirmar el mail. Reenviá la confirmación o confirmá el usuario desde Supabase.';
+  }
+  if (m.includes('email logins are disabled') || m.includes('email provider')) {
+    return 'El login por email está desactivado en Supabase (Authentication → Providers → Email).';
+  }
+  if (m.includes('rate limit') || m.includes('too many') || m.includes('for security purposes')) {
+    return 'Demasiados intentos seguidos. Esperá un ratito y probá de nuevo.';
+  }
   if (m.includes('invalid login')) return 'Email o contraseña incorrectos.';
   if (m.includes('already registered')) return 'Ese email ya tiene cuenta. Probá entrar.';
   if (m.includes('password') && m.includes('6')) return 'La contraseña necesita al menos 6 caracteres.';

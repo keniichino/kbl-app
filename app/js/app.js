@@ -1,6 +1,6 @@
 // ====== KBL App — módulo Foco v1 ======
 import { getSessions, addSession, getActive, setActive, getStats, initSync, clearLocalData } from './store.js';
-import { getSession, signIn, signUp, signOut, mensajeError } from './auth.js';
+import { getSession, signIn, signUp, signOut, mensajeError, esEmailSinConfirmar, reenviarConfirmacion } from './auth.js';
 import { SPECIES, renderTree, miniTree, speciesCard, dayPhase } from './tree.js';
 import { initGastos, renderGastos } from './gastos.js';
 import { initViewer360 } from './viewer360.js';
@@ -406,6 +406,7 @@ function mostrarLogin() {
   const msg = $('#auth-msg');
   const sub = $('#auth-sub');
   const switchBtn = $('#auth-switch');
+  const resendBtn = $('#auth-resend');
   let modo = 'login'; // 'login' | 'signup'
 
   const setMsg = (texto, ok = false) => {
@@ -413,6 +414,21 @@ function mostrarLogin() {
     msg.hidden = !texto;
     msg.classList.toggle('ok', ok);
   };
+
+  resendBtn.addEventListener('click', async () => {
+    const mail = email.value.trim();
+    if (!mail) { setMsg('Escribí tu email arriba y reintentá.'); return; }
+    resendBtn.disabled = true;
+    try {
+      await reenviarConfirmacion(mail);
+      setMsg('Listo, te reenviamos el mail de confirmación. Revisá spam.', true);
+      resendBtn.hidden = true;
+    } catch (err) {
+      setMsg(mensajeError(err));
+    } finally {
+      resendBtn.disabled = false;
+    }
+  });
 
   const aplicarModo = () => {
     const esLogin = modo === 'login';
@@ -422,6 +438,7 @@ function mostrarLogin() {
       : 'Creá tu cuenta. Tus datos quedan solo tuyos, aislados del resto.';
     switchBtn.textContent = esLogin ? '¿No tenés cuenta? Crear una' : '¿Ya tenés cuenta? Entrar';
     pass.autocomplete = esLogin ? 'current-password' : 'new-password';
+    resendBtn.hidden = true;
     setMsg('');
   };
 
@@ -432,7 +449,7 @@ function mostrarLogin() {
 
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
-    const mail = email.value.trim();
+    const mail = email.value.trim().toLowerCase();
     if (!mail || pass.value.length < 6) {
       setMsg('Poné un email y una contraseña de al menos 6 caracteres.');
       return;
@@ -455,6 +472,7 @@ function mostrarLogin() {
       }
     } catch (err) {
       setMsg(mensajeError(err));
+      resendBtn.hidden = !esEmailSinConfirmar(err);
     } finally {
       overlay.classList.remove('busy');
     }
