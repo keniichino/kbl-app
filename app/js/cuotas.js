@@ -16,6 +16,11 @@ const TARJETAS = [
 let tarjetaSel = 'visa';
 const $ = (sel) => document.querySelector(sel);
 
+// Escapa texto del usuario antes de inyectarlo en innerHTML.
+function escapar(s) {
+  return (s || '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+}
+
 function addMeses(fecha, n) {
   const d = new Date(fecha + 'T00:00:00');
   d.setMonth(d.getMonth() + n);
@@ -139,7 +144,7 @@ function render() {
           <div class="cuota-card-top">
             <span class="cuota-emoji">${tarjetaEmoji(c.tarjeta)}</span>
             <div class="cuota-info">
-              <div class="cuota-desc">${c.descripcion}</div>
+              <div class="cuota-desc">${escapar(c.descripcion)}</div>
               <div class="cuota-sub">${fmtARS.format(c.monto_cuota)}/cuota · ${restantes} restante${restantes !== 1 ? 's' : ''} de ${c.cuota_total}</div>
             </div>
             <div class="cuota-actions">

@@ -136,7 +136,10 @@ export async function initSync(onRemoteChange) {
       else if (local) setActive(local); // sesión iniciada offline: gana lo local y se empuja
     }
     if (gastosR.data) mergeListPull('gastos', KEYS.gastos, gastosR.data, fromRemoteGasto, toRemoteGasto);
-    if (notasR.data) mergeListPull('notas', KEYS.notas, notasR.data, fromRemoteNota, toRemoteNota);
+    // Notas: last-write-wins por `updated`, así una edición hecha offline no la
+    // pisa la versión vieja que estaba en la nube.
+    if (notasR.data) mergeListPull('notas', KEYS.notas, notasR.data, fromRemoteNota, toRemoteNota,
+      (local, remote) => local.updated > Date.parse(remote.updated_at));
     if (cuotasR.data) mergeListPull('cuotas', KEYS.cuotas, cuotasR.data, fromRemoteCuota, toRemoteCuota);
   } catch {
     /* offline: seguimos con localStorage */
@@ -241,20 +244,35 @@ export function removeNota(id) {
 // --- Sync genérico para tablas-lista (gastos, notas): merge local+remoto
 // al arrancar, y aplica INSERT/UPDATE/DELETE en vivo del otro dispositivo.
 
-function mergeListPull(tableName, key, remoteRows, fromRemote, toRemote) {
+// localGana(localItem, remoteRow) → true si la versión local debe prevalecer
+// sobre la remota del mismo id (last-write-wins). Opcional: sin él, la remota
+// siempre gana (comportamiento para tablas que no se editan, como gastos).
+function mergeListPull(tableName, key, remoteRows, fromRemote, toRemote, localGana) {
   const local = read(key, []);
   const remoteIds = new Set(remoteRows.map((r) => r.id));
-  const localIds = new Set(local.map((l) => l.id));
+  const resultado = [];
 
-  // Ítems creados offline en este dispositivo: empujarlos al servidor
-  for (const l of local) {
-    if (!remoteIds.has(l.id)) {
+  // Filas que existen en el servidor: normalmente gana la remota; pero si hay
+  // una local del mismo id más nueva, gana la local y la re-empujamos.
+  for (const r of remoteRows) {
+    const l = local.find((x) => x.id === r.id);
+    if (l && localGana && localGana(l, r)) {
       supabase.from(tableName).upsert(toRemote(l), { onConflict: 'id' }).then(() => {}, () => {});
+      resultado.push(l);
+    } else {
+      resultado.push(fromRemote(r));
     }
   }
 
-  const soloLocal = local.filter((l) => !remoteIds.has(l.id));
-  write(key, [...soloLocal, ...remoteRows.map(fromRemote)]);
+  // Ítems creados offline en este dispositivo (no están en el server): empujar y conservar
+  for (const l of local) {
+    if (!remoteIds.has(l.id)) {
+      supabase.from(tableName).upsert(toRemote(l), { onConflict: 'id' }).then(() => {}, () => {});
+      resultado.push(l);
+    }
+  }
+
+  write(key, resultado);
 }
 
 function suscribirLista(tableName, key, fromRemote, kind) {

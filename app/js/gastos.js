@@ -28,6 +28,12 @@ let tarjetaGastoSel = null;
 
 const $ = (sel) => document.querySelector(sel);
 
+// Escapa texto del usuario antes de inyectarlo en innerHTML (evita que un
+// "<" o "&" en la descripción rompa el render de la lista).
+function escapar(s) {
+  return (s || '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+}
+
 function emojiDe(key) {
   return (CATEGORIAS.find((c) => c.key === key) || CATEGORIAS.at(-1)).emoji;
 }
@@ -81,7 +87,7 @@ function render() {
       <div class="gasto-item">
         <span class="gasto-emoji">${emojiDe(g.categoria)}</span>
         <div class="gasto-item-mid">
-          <span class="gasto-desc">${g.descripcion || (CATEGORIAS.find((c) => c.key === g.categoria)?.label ?? 'Gasto')}</span>
+          <span class="gasto-desc">${escapar(g.descripcion) || (CATEGORIAS.find((c) => c.key === g.categoria)?.label ?? 'Gasto')}</span>
           ${tk ? `<span class="gasto-tarjeta-badge">${tk.emoji} ${tk.label}</span>` : ''}
         </div>
         <span class="gasto-monto">${fmtARS.format(g.monto)}</span>
