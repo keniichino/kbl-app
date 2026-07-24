@@ -21,3 +21,10 @@ blender/inspect_*.py
 blender/render_test.py
 demos/
 n8n/
+
+# Estado interno del Supabase CLI (no versionar)
+supabase/.temp/
+supabase/.branches/
+# Secretos locales (nunca al repo): password de la DB, tokens, etc.
+.env
+.env.*
