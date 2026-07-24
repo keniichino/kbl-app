@@ -145,6 +145,14 @@ export async function initSync(onRemoteChange) {
     /* offline: seguimos con localStorage */
   }
 
+  // Realtime idempotente: si initSync corre más de una vez (p. ej. reintento de
+  // login o re-arranque sin reload), removemos los canales previos antes de
+  // recrearlos. Las versiones nuevas de supabase-js tiran
+  // "cannot add postgres_changes callbacks ... after subscribe()" si se hace
+  // .on() sobre un canal que ya existe y está suscripto (reusar el mismo nombre
+  // devolvía ese canal ya vivo). Limpiar primero evita el error.
+  await supabase.removeAllChannels();
+
   // Cambios en vivo desde el otro dispositivo
   supabase
     .channel('kbl-sync')

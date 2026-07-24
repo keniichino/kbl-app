@@ -1040,6 +1040,10 @@ body[data-theme="dark"] .cuota-del { background: rgba(248,113,113,.15); color: #
   padding: 24px;
   padding-bottom: calc(24px + env(safe-area-inset-bottom));
 }
+/* Sin esta regla, .auth-overlay { display:flex } le gana al atributo `hidden`
+   y el overlay NO se oculta al entrar (queda el login tapando la app). Misma
+   corrección que .nota-editor[hidden]. */
+.auth-overlay[hidden] { display: none; }
 .auth-card {
   width: 100%;
   max-width: 360px;
