@@ -447,6 +447,17 @@ function mostrarLogin() {
     aplicarModo();
   });
 
+  // Entra a la app en el acto, sin recargar la página. Usa la sesión que signIn
+  // ya dejó en memoria en el client de Supabase, así no depende de que sobreviva
+  // un reload. Algunos navegadores no persisten localStorage en sitios *.github.io
+  // (privacidad / dominio "público"), y el viejo location.reload() perdía la
+  // sesión y rebotaba al login. Booteando en el acto, el login entra sí o sí.
+  const entrarEnLaApp = async () => {
+    overlay.classList.remove('busy');
+    overlay.hidden = true;
+    await arrancarApp();
+  };
+
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     const mail = email.value.trim().toLowerCase();
@@ -459,7 +470,7 @@ function mostrarLogin() {
     try {
       if (modo === 'login') {
         await signIn(mail, pass.value);
-        location.reload(); // arranca limpio con la sesión ya persistida
+        await entrarEnLaApp();
       } else {
         const { needsConfirm } = await signUp(mail, pass.value);
         if (needsConfirm) {
@@ -467,7 +478,7 @@ function mostrarLogin() {
           modo = 'login';
           aplicarModo();
         } else {
-          location.reload();
+          await entrarEnLaApp();
         }
       }
     } catch (err) {
