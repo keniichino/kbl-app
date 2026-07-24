@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>KBL — Diagnóstico</title>
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body { font-family: system-ui, -apple-system, sans-serif; margin: 0; padding: 16px; line-height: 1.4; background: #0f1115; color: #e8eaed; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .sub { color: #9aa0a6; font-size: 13px; margin-bottom: 16px; }
+  .card { background: #1b1e24; border: 1px solid #2a2e37; border-radius: 12px; padding: 12px 14px; margin: 10px 0; }
+  .row { display: flex; gap: 8px; align-items: flex-start; padding: 6px 0; border-bottom: 1px solid #23262e; font-size: 15px; }
+  .row:last-child { border-bottom: 0; }
+  .ico { font-size: 18px; flex: 0 0 auto; }
+  .txt b { display: block; }
+  .txt small { color: #9aa0a6; }
+  input { width: 100%; padding: 12px; font-size: 16px; border-radius: 10px; border: 1px solid #3a3f4a; background: #12141a; color: #fff; margin: 6px 0; }
+  button { width: 100%; padding: 14px; font-size: 16px; font-weight: 600; border: 0; border-radius: 10px; background: #3b82f6; color: #fff; margin-top: 8px; }
+  button:disabled { opacity: .5; }
+  pre { white-space: pre-wrap; word-break: break-word; font-size: 13px; background: #12141a; padding: 10px; border-radius: 8px; }
+  .ver { font-family: monospace; font-size: 12px; color: #6b7280; }
+</style>
+</head>
+<body>
+  <h1>🔧 Diagnóstico KBL</h1>
+  <div class="sub">Abrí esto en el MISMO dispositivo donde no podés entrar. Sacale una captura al resultado y mandámela.</div>
+  <div class="ver" id="ver">cargando…</div>
+
+  <div class="card" id="auto"><div class="row"><span class="ico">⏳</span><div class="txt">Corriendo chequeos automáticos…</div></div></div>
+
+  <div class="card">
+    <b style="font-size:15px">Probar tu login</b>
+    <div class="sub" style="margin:4px 0 8px">Escribí tu email y contraseña acá para ver qué pasa exactamente al entrar.</div>
+    <input id="email" type="email" placeholder="Tu email" autocomplete="username">
+    <input id="pass" type="password" placeholder="Tu contraseña" autocomplete="current-password">
+    <button id="btn">Probar login</button>
+    <div id="loginout"></div>
+  </div>
+
+<script type="module">
+const SUPABASE_URL = 'https://jcsenhpuvvbxcxapoaia.supabase.co';
+const ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Impjc2VuaHB1dnZieGN4YXBvYWlhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQwNzczNTksImV4cCI6MjA5OTY1MzM1OX0.24wrZFoSU0fAi-Ybn_cyJgwsilDMW4H0tK7oaOoPvQU';
+const STAMP = 'diag-2026-07-24-a';
+
+const $ = (s) => document.querySelector(s);
+$('#ver').textContent = 'versión diagnóstico: ' + STAMP + ' · ' + location.host;
+
+const rows = [];
+function add(ok, titulo, detalle) {
+  rows.push({ ok, titulo, detalle });
+  render();
+}
+function render() {
+  $('#auto').innerHTML = rows.map(r =>
+    `<div class="row"><span class="ico">${r.ok === true ? '✅' : r.ok === false ? '❌' : '⚠️'}</span>
+     <div class="txt"><b>${r.titulo}</b><small>${r.detalle || ''}</small></div></div>`
+  ).join('');
+}
+
+// 1. Online
+add(navigator.onLine, 'Conexión a internet', navigator.onLine ? 'El dispositivo dice estar online.' : 'El navegador se reporta OFFLINE.');
+
+// 2. localStorage: ¿escribe y persiste?
+let lsOk = false;
+try {
+  localStorage.setItem('kbl_diag_test', '1');
+  lsOk = localStorage.getItem('kbl_diag_test') === '1';
+  localStorage.removeItem('kbl_diag_test');
+  add(lsOk, 'Guardar sesión (localStorage)', lsOk ? 'El navegador SÍ puede guardar datos. Bien.' : 'No pudo leer lo que escribió.');
+} catch (e) {
+  add(false, 'Guardar sesión (localStorage)', 'BLOQUEADO: ' + e.message + '. Esta es probablemente LA causa: sin esto, la app no puede mantenerte logueado.');
+}
+
+// 3. Service worker
+navigator.serviceWorker?.getRegistrations?.().then(regs => {
+  const ctrl = navigator.serviceWorker.controller;
+  add(true, 'Service worker (caché de la app)',
+    `${regs.length} registrado(s). Controlando esta página: ${ctrl ? 'sí' : 'no'}. Si tenés problemas de versión vieja, se limpia acá.`);
+}).catch(() => {});
+
+// 4. esm.sh (de acá baja la librería de Supabase)
+let supa = null;
+try {
+  const mod = await import('https://esm.sh/@supabase/supabase-js@2');
+  add(true, 'Librería Supabase (CDN esm.sh)', 'Cargó bien.');
+  supa = mod.createClient(SUPABASE_URL, ANON, { auth: { persistSession: true, autoRefreshToken: true } });
+} catch (e) {
+  add(false, 'Librería Supabase (CDN esm.sh)', 'NO cargó: ' + e.message + '. Si esto falla, la app entera no arranca.');
+}
+
+// 5. Alcance al servidor + desfase de reloj
+try {
+  const t0 = Date.now();
+  const r = await fetch(SUPABASE_URL + '/auth/v1/settings', { headers: { apikey: ANON } });
+  const serverDate = r.headers.get('date');
+  add(r.ok || r.status === 400, 'Alcance al servidor Supabase', 'Respondió HTTP ' + r.status + '.');
+  if (serverDate) {
+    const skew = Math.round((Date.now() - new Date(serverDate).getTime()) / 1000);
+    const okClock = Math.abs(skew) < 120;
+    add(okClock, 'Reloj del dispositivo', okClock
+      ? `Bien (desfase ${skew}s vs servidor).`
+      : `DESFASADO ${skew}s vs servidor. Un reloj muy corrido rompe el login. Poné fecha/hora en AUTOMÁTICO.`);
+  }
+} catch (e) {
+  add(false, 'Alcance al servidor Supabase', 'NO llega: ' + e.message + '. Tu red/proveedor podría estar bloqueándolo (probá con datos móviles en vez de WiFi, o viceversa).');
+}
+
+// Guardo el client para el test de login
+window.__supa = supa;
+
+// --- Test de login manual ---
+$('#btn').addEventListener('click', async () => {
+  const out = $('#loginout');
+  const email = $('#email').value.trim().toLowerCase();
+  const pass = $('#pass').value;
+  if (!email || !pass) { out.innerHTML = '<pre>Poné email y contraseña.</pre>'; return; }
+  if (!window.__supa) { out.innerHTML = '<pre>No cargó la librería de Supabase (ver ❌ arriba). No se puede probar el login.</pre>'; return; }
+  $('#btn').disabled = true;
+  out.innerHTML = '<pre>Probando…</pre>';
+  const log = [];
+  try {
+    const { data, error } = await window.__supa.auth.signInWithPassword({ email, password: pass });
+    if (error) {
+      log.push('❌ LOGIN RECHAZADO');
+      log.push('   código: ' + (error.code || error.status));
+      log.push('   mensaje: ' + error.message);
+    } else if (data.session) {
+      log.push('✅ LOGIN OK — el servidor te aceptó.');
+      log.push('   usuario: ' + data.session.user.email);
+      // ¿persistió la sesión?
+      await new Promise(r => setTimeout(r, 400));
+      const key = Object.keys(localStorage).find(k => k.startsWith('sb-'));
+      if (key && localStorage.getItem(key)) {
+        log.push('✅ La sesión QUEDÓ GUARDADA en el dispositivo. Deberías poder usar la app.');
+      } else {
+        log.push('❌ La sesión NO se guardó (localStorage no la retuvo).');
+        log.push('   >>> ESTA ES LA CAUSA: entrás, pero al recargar se pierde y volvés al login.');
+      }
+    }
+  } catch (e) {
+    log.push('❌ ERROR de red al intentar loguear: ' + e.message);
+  }
+  out.innerHTML = '<pre>' + log.join('\n') + '</pre>';
+  $('#btn').disabled = false;
+});
+</script>
+</body>
+</html>
