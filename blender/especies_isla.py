@@ -21,6 +21,18 @@ SEED = SEEDS_DEF[ESPECIE]
 if "--seed" in argv:
     SEED = int(argv[argv.index("--seed") + 1])
 TEST_MODE = "--test" in argv
+# --inspect: construye la escena, imprime medidas y sale SIN renderizar.
+# Sirve para diagnosticar geometria (p. ej. si una almohadilla de follaje quedo
+# separada del tronco) sin pagar los minutos de un turntable.
+INSPECT_MODE = "--inspect" in argv
+# Encuadre: fraccion del cuadro que debe ocupar la dimension que manda (el alto
+# de la composicion, o el ancho de la isla si el arbol es bajo). Igual para las
+# 5 especies -> mismo margen visual en todas.
+FRAME_FILL = 0.92
+if "--frame-fill" in argv:
+    FRAME_FILL = float(argv[argv.index("--frame-fill") + 1])
+# Vuelve a la camara fija de antes (por si hay que reproducir un render viejo).
+FIXED_CAM = "--fixed-cam" in argv
 TEST_ANGLE = 0.0
 if "--angle" in argv:
     TEST_ANGLE = float(argv[argv.index("--angle") + 1])
@@ -563,6 +575,9 @@ def add_pad(center, radius, tilt=0.0, mat=None, seed_extra=0):
     (hull), unidos y ocultos para que en vez de leerse como discos lisos cada
     almohadilla sea una nube densa de cientos de hojitas chicas."""
     start = len(cluster_objs)
+    if INSPECT_MODE:
+        print("PAD centro=(%6.2f,%6.2f,%6.2f) radio=%.2f start=%d total_previo=%d"
+              % (center.x, center.y, center.z, radius, start, len(cluster_objs)))
     add_cluster(center, radius * 0.38, squash=(0.20, 0.27), mat=mat, disp_scale=0.5)
     rings = [(radius * 0.36, 7, radius * 0.32), (radius * 0.64, 10, radius * 0.25),
              (radius * 0.80, 7, radius * 0.16)]
@@ -1463,6 +1478,24 @@ print("=== ALTO:", round(hi.z - lo.z, 2), "TOPE:", round(hi.z, 2),
 # chequeo analitico de clipping en el peor angulo del turntable
 half_v = math.atan(18.0 / CAM_LENS)
 half_h = math.atan(18.0 * 0.8 / CAM_LENS)
+# ------------------------------------------------------------------ encuadre automatico
+# La camara era FIJA para las 5 especies, pero sus alturas varian 58% (arbolito
+# 4.89 vs roble 7.71). Con CAM_Z fijo en 0.962 las especies bajas quedaban
+# hundidas con aire muerto arriba, y las altas empujadas contra el techo del
+# cuadro: es el "salto de tamaño" que se ve al cambiar de especie en el visor.
+# Ahora distancia y altura salen de la geometria real, de forma que la dimension
+# que manda ocupe siempre la misma fraccion del cuadro y la composicion quede
+# centrada. Ojo: para las especies bajas manda el ANCHO DE LA ISLA, no el arbol
+# -> no se puede acercar mas sin recortar la isla.
+if not FIXED_CAM:
+    _hz = (hi.z - lo.z) / 2.0
+    CAM_Z = (hi.z + lo.z) / 2.0
+    _d_v = max_r + _hz / (FRAME_FILL * math.tan(half_v))
+    _d_h = max_r + max_r / (FRAME_FILL * math.tan(half_h))
+    CAM_DIST = max(_d_v, _d_h)
+    print("=== ENCUADRE auto: dist %.3f z %.3f (manda: %s)"
+          % (CAM_DIST, CAM_Z, "alto" if _d_v >= _d_h else "ancho de isla"))
+
 near = CAM_DIST - max_r
 vis_w = near * math.tan(half_h)
 vis_top = CAM_Z + near * math.tan(half_v)
@@ -1589,6 +1622,35 @@ def check_border_alpha(path, quiet=False):
     if not quiet:
         print("=== BORDER ALPHA MAX:", round(mx, 3), ("CLIPPING!" if mx > 0.01 else "ok"))
     return mx
+
+if INSPECT_MODE:
+    from mathutils import Vector as _V
+
+    def _bbox(ob):
+        pts = [ob.matrix_world @ _V(c[:]) for c in ob.bound_box]
+        xs = [p.x for p in pts]; ys = [p.y for p in pts]; zs = [p.z for p in pts]
+        return min(xs), max(xs), min(ys), max(ys), min(zs), max(zs)
+
+    print("=== INSPECT", ESPECIE, "seed", SEED)
+    _tot = [1e9, -1e9, 1e9, -1e9, 1e9, -1e9]
+    for ob in scene.objects:
+        if ob.type != 'MESH' or ob.hide_render:
+            continue
+        b = _bbox(ob)
+        _tot[0] = min(_tot[0], b[0]); _tot[1] = max(_tot[1], b[1])
+        _tot[2] = min(_tot[2], b[2]); _tot[3] = max(_tot[3], b[3])
+        _tot[4] = min(_tot[4], b[4]); _tot[5] = max(_tot[5], b[5])
+    print("=== BBOX TOTAL %s x[%6.2f,%6.2f] y[%6.2f,%6.2f] z[%6.2f,%6.2f] anchoX=%.2f altoZ=%.2f"
+          % (ESPECIE, _tot[0], _tot[1], _tot[2], _tot[3], _tot[4], _tot[5],
+             _tot[1] - _tot[0], _tot[5] - _tot[4]))
+    for ob in sorted(scene.objects, key=lambda o: o.name):
+        if ob.type != 'MESH':
+            continue
+        b = _bbox(ob)
+        print("OBJ %-32s render=%s x[%6.2f,%6.2f] y[%6.2f,%6.2f] z[%6.2f,%6.2f]"
+              % (ob.name[:32], "si" if not ob.hide_render else "NO",
+                 b[0], b[1], b[2], b[3], b[4], b[5]))
+    sys.exit(0)
 
 scene.render.image_settings.file_format = 'PNG'
 scene.render.image_settings.color_mode = 'RGBA'
