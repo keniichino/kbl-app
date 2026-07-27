@@ -305,10 +305,55 @@ if not camera:
     print("ERROR: no hay cámara en la scene")
     sys.exit(1)
 
-TARGET = mathutils.Vector((0.0, 0.0, 0.5))
-cam_start = camera.location.copy()
-dist  = math.sqrt(cam_start.x**2 + cam_start.y**2)
-height = cam_start.z
+# Antes era un punto fijo (0,0,0.5). Con el encuadre automatico por especie de
+# especies_isla.py la camara ya viene a la altura del centro de la composicion;
+# seguir apuntando a un z fijo volvia a descentrar lo que se habia centrado (y
+# el error crecia con la altura de la especie: el roble mide 58% mas que el
+# arbolito). Ahora el objetivo es el centro vertical real de lo que se ve, que
+# se calcula DESPUES de ocultar los objetos sueltos de mas arriba.
+# El encuadre se calcula ACA, no en especies_isla.py, porque este script oculta
+# objetos y ademas, en la flor, descarta la cosmos y arma la rosa en su lugar.
+# Calcularlo antes encuadraba sobre geometria que despues se tira: la flor
+# quedaba baja y con aire muerto arriba. Aca ya esta todo en su estado final.
+FRAME_FILL = 0.92   # fraccion del cuadro que ocupa la dimension que manda
+_deps = bpy.context.evaluated_depsgraph_get()
+_zmin, _zmax, _max_r = 1e9, -1e9, 0.0
+for _obj in scene.objects:
+    if _obj.type != 'MESH':
+        continue
+    # Los hulls estan ocultos a proposito: no se renderizan, pero son el emisor
+    # de las particulas de follaje, asi que representan el volumen de la copa y
+    # SI hay que medirlos. El resto de lo oculto (sueltos, cosmos descartada) no.
+    if _obj.hide_render and "hull" not in _obj.name.lower():
+        continue
+    _oe = _obj.evaluated_get(_deps)
+    _me = _oe.to_mesh()
+    # Por vertice y no por bound_box: la esquina de la caja de un objeto redondo
+    # cae a r*raiz(2), lo que inflaba el radio un 41% y alejaba la camara de mas.
+    for _v in _me.vertices:
+        _w = _oe.matrix_world @ _v.co
+        if _w.z < _zmin: _zmin = _w.z
+        if _w.z > _zmax: _zmax = _w.z
+        _r = math.hypot(_w.x, _w.y)
+        if _r > _max_r: _max_r = _r
+    _oe.to_mesh_clear()
+
+_lens = camera.data.lens
+_aspect = scene.render.resolution_x / scene.render.resolution_y
+_half_v = math.atan(18.0 / _lens)
+_half_h = math.atan(18.0 * _aspect / _lens)
+_hz = (_zmax - _zmin) / 2.0
+
+height = (_zmax + _zmin) / 2.0           # composicion centrada en el cuadro
+TARGET = mathutils.Vector((0.0, 0.0, height))   # camara nivelada, sin cabeceo
+# La distancia sale de la restriccion que mande: el alto de la composicion o el
+# ancho de la isla. En las especies bajas manda la isla -> no se puede acercar
+# mas sin recortarla, y por eso el arbol se ve chico (es geometria, no un bug).
+_d_v = _max_r + _hz / (FRAME_FILL * math.tan(_half_v))
+_d_h = _max_r + _max_r / (FRAME_FILL * math.tan(_half_h))
+dist = max(_d_v, _d_h)
+print(f"  [INFO] encuadre: dist={dist:.3f} height={height:.3f} "
+      f"(manda {'alto' if _d_v >= _d_h else 'ancho de isla'}, radio={_max_r:.2f})")
 
 print(f"\n=== RENDER: {FRAMES} frames, dist={dist:.3f}, height={height:.3f}, samples=128 ===")
 print(f"  Output: {OUT_DIR}")
