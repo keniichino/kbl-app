@@ -2,10 +2,10 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "kbl-app",
-      "runtimeExecutable": "python",
-      "runtimeArgs": ["-m", "http.server", "4173", "--directory", "app"],
-      "port": 4173
+      "name": "kbl-local",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["tools/serve.js", "app", "5173"],
+      "port": 5173
     }
   ]
 }

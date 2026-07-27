@@ -138,7 +138,11 @@ function render() {
     .sort((a, b) => a.fecha_primer_venc.localeCompare(b.fecha_primer_venc))
     .map((c) => {
       const restantes = c.cuota_total - c.cuota_actual + 1;
-      const pct = Math.round(((c.cuota_actual - 1) / c.cuota_total) * 100);
+      // `cuota_actual` es la que estás por pagar, no una ya pagada: con 3 de 3
+      // todavía debés la última, o sea 2 pagadas de 3 (67%). La barra llega a
+      // 100% recién cuando la marcás completada y sale de la lista.
+      const pagadas = Math.max(0, Math.min(c.cuota_total, c.cuota_actual - 1));
+      const pct = Math.round((pagadas / c.cuota_total) * 100);
       return `
         <div class="cuota-card">
           <div class="cuota-card-top">
@@ -155,7 +159,7 @@ function render() {
           <div class="cuota-progress-wrap">
             <div class="cuota-progress-bar" style="width:${pct}%"></div>
           </div>
-          <div class="cuota-progress-label">${c.cuota_actual}/${c.cuota_total} — cuota actual ${fmtARS.format(c.monto_cuota)}</div>
+          <div class="cuota-progress-label">${pagadas} de ${c.cuota_total} pagadas — próxima ${fmtARS.format(c.monto_cuota)}</div>
         </div>`;
     }).join('');
 }

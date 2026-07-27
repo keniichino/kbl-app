@@ -39,6 +39,18 @@ function write(key, value) {
   localStorage.setItem(key, JSON.stringify(value));
 }
 
+// Empuja a Supabase sin bloquear la UI. Un fallo no rompe nada (local-first),
+// pero sí queda en consola: cuando faltaba la columna `tarjeta` en `gastos`,
+// cada upsert fallaba en silencio y no había forma de darse cuenta.
+function push(consulta, contexto) {
+  consulta.then(
+    (res) => {
+      if (res && res.error) console.warn(`[sync] ${contexto}:`, res.error.message);
+    },
+    (err) => console.warn(`[sync] ${contexto}:`, (err && err.message) || err)
+  );
+}
+
 const toRemote = (s) => ({
   id: s.id,
   start_ts: new Date(s.startTs).toISOString(),
@@ -66,10 +78,12 @@ export function addSession(session) {
     write(KEYS.sessions, all);
   }
   // onConflict start_ts: si ambos dispositivos completan la misma sesión, queda una sola
-  supabase
-    .from('foco_sessions')
-    .upsert(toRemote(session), { onConflict: 'start_ts', ignoreDuplicates: true })
-    .then(() => {}, () => {});
+  push(
+    supabase
+      .from('foco_sessions')
+      .upsert(toRemote(session), { onConflict: 'start_ts', ignoreDuplicates: true }),
+    'foco_sessions upsert'
+  );
   return session;
 }
 
@@ -84,15 +98,17 @@ export function setActive(session) {
   else write(KEYS.active, session);
   if (!currentUid) return; // sin sesión no hay a dónde empujar
   // Una fila por usuario (PK = user_id): upsert en vez de update a id=1.
-  supabase
-    .from('foco_active')
-    .upsert({
-      user_id: currentUid,
-      start_ts: session ? new Date(session.startTs).toISOString() : null,
-      duration_min: session ? session.durationMin : null,
-      updated_at: new Date().toISOString(),
-    }, { onConflict: 'user_id' })
-    .then(() => {}, () => {});
+  push(
+    supabase
+      .from('foco_active')
+      .upsert({
+        user_id: currentUid,
+        start_ts: session ? new Date(session.startTs).toISOString() : null,
+        duration_min: session ? session.durationMin : null,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'user_id' }),
+    'foco_active upsert'
+  );
 }
 
 // --- Sync ---
@@ -141,8 +157,10 @@ export async function initSync(onRemoteChange) {
     if (notasR.data) mergeListPull('notas', KEYS.notas, notasR.data, fromRemoteNota, toRemoteNota,
       (local, remote) => local.updated > Date.parse(remote.updated_at));
     if (cuotasR.data) mergeListPull('cuotas', KEYS.cuotas, cuotasR.data, fromRemoteCuota, toRemoteCuota);
-  } catch {
-    /* offline: seguimos con localStorage */
+  } catch (err) {
+    // Offline o timeout es esperable y la app sigue andando con lo local; lo
+    // logueamos igual para poder distinguirlo de un error real del servidor.
+    console.warn('[sync] pull inicial:', err === 'timeout' ? 'timeout, seguimos con datos locales' : err);
   }
 
   // Realtime idempotente: si initSync corre más de una vez (p. ej. reintento de
@@ -207,13 +225,13 @@ export function addGasto(gasto) {
   const all = getGastos();
   all.push(gasto);
   write(KEYS.gastos, all);
-  supabase.from('gastos').upsert(toRemoteGasto(gasto), { onConflict: 'id' }).then(() => {}, () => {});
+  push(supabase.from('gastos').upsert(toRemoteGasto(gasto), { onConflict: 'id' }), 'gastos upsert');
   return gasto;
 }
 
 export function removeGasto(id) {
   write(KEYS.gastos, getGastos().filter((g) => g.id !== id));
-  supabase.from('gastos').delete().eq('id', id).then(() => {}, () => {});
+  push(supabase.from('gastos').delete().eq('id', id), 'gastos delete');
 }
 
 // --- Notas: [{ id, titulo, contenido, updated }] ---
@@ -240,13 +258,13 @@ export function upsertNota(nota) {
   const all = getNotas().filter((n) => n.id !== nota.id);
   all.push(nota);
   write(KEYS.notas, all);
-  supabase.from('notas').upsert(toRemoteNota(nota), { onConflict: 'id' }).then(() => {}, () => {});
+  push(supabase.from('notas').upsert(toRemoteNota(nota), { onConflict: 'id' }), 'notas upsert');
   return nota;
 }
 
 export function removeNota(id) {
   write(KEYS.notas, getNotas().filter((n) => n.id !== id));
-  supabase.from('notas').delete().eq('id', id).then(() => {}, () => {});
+  push(supabase.from('notas').delete().eq('id', id), 'notas delete');
 }
 
 // --- Sync genérico para tablas-lista (gastos, notas): merge local+remoto
@@ -265,7 +283,7 @@ function mergeListPull(tableName, key, remoteRows, fromRemote, toRemote, localGa
   for (const r of remoteRows) {
     const l = local.find((x) => x.id === r.id);
     if (l && localGana && localGana(l, r)) {
-      supabase.from(tableName).upsert(toRemote(l), { onConflict: 'id' }).then(() => {}, () => {});
+      push(supabase.from(tableName).upsert(toRemote(l), { onConflict: 'id' }), `${tableName} re-push (local más nuevo)`);
       resultado.push(l);
     } else {
       resultado.push(fromRemote(r));
@@ -275,7 +293,7 @@ function mergeListPull(tableName, key, remoteRows, fromRemote, toRemote, localGa
   // Ítems creados offline en este dispositivo (no están en el server): empujar y conservar
   for (const l of local) {
     if (!remoteIds.has(l.id)) {
-      supabase.from(tableName).upsert(toRemote(l), { onConflict: 'id' }).then(() => {}, () => {});
+      push(supabase.from(tableName).upsert(toRemote(l), { onConflict: 'id' }), `${tableName} push (creado offline)`);
       resultado.push(l);
     }
   }
@@ -332,19 +350,19 @@ export function addCuota(cuota) {
   const all = getCuotas();
   all.push(cuota);
   write(KEYS.cuotas, all);
-  supabase.from('cuotas').upsert(toRemoteCuota(cuota), { onConflict: 'id' }).then(() => {}, () => {});
+  push(supabase.from('cuotas').upsert(toRemoteCuota(cuota), { onConflict: 'id' }), 'cuotas upsert');
   return cuota;
 }
 
 export function removeCuota(id) {
   write(KEYS.cuotas, getCuotas().filter((c) => c.id !== id));
-  supabase.from('cuotas').delete().eq('id', id).then(() => {}, () => {});
+  push(supabase.from('cuotas').delete().eq('id', id), 'cuotas delete');
 }
 
 export function updateCuotaEstado(id, estado) {
   const all = getCuotas().map((c) => c.id === id ? { ...c, estado } : c);
   write(KEYS.cuotas, all);
-  supabase.from('cuotas').update({ estado }).eq('id', id).then(() => {}, () => {});
+  push(supabase.from('cuotas').update({ estado }).eq('id', id), 'cuotas update estado');
 }
 
 // --- Estadísticas derivadas ---
