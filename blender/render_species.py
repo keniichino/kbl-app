@@ -26,6 +26,20 @@ except ValueError:
 SPECIES = argv[idx]
 OUT_DIR  = argv[idx + 1]
 FRAMES   = 36
+# --frames N: recorta el turntable. Con 1 se saca un frame suelto para validar
+# geometria/encuadre en segundos en vez de esperar los ~5min del set completo.
+if "--frames" in argv:
+    FRAMES = int(argv[argv.index("--frames") + 1])
+
+# --- encuadre heredado (pipeline de etapas de crecimiento) ---
+# Sin esto cada etapa se auto-encuadra: la camara se acercaria al brote hasta
+# llenarle el cuadro y las 4 etapas se verian del mismo tamaño, que es
+# exactamente lo contrario a mostrar que el arbol crecio. Las etapas jovenes se
+# renderizan con la dist/height de la etapa madura, que se obtiene corriendo
+# este mismo script con --solo-encuadre sobre el .blend maduro.
+DIST_FIJA = float(argv[argv.index("--dist") + 1]) if "--dist" in argv else None
+HEIGHT_FIJA = float(argv[argv.index("--height") + 1]) if "--height" in argv else None
+SOLO_ENCUADRE = "--solo-encuadre" in argv
 
 os.makedirs(OUT_DIR, exist_ok=True)
 scene = bpy.context.scene
@@ -345,7 +359,6 @@ _half_h = math.atan(18.0 * _aspect / _lens)
 _hz = (_zmax - _zmin) / 2.0
 
 height = (_zmax + _zmin) / 2.0           # composicion centrada en el cuadro
-TARGET = mathutils.Vector((0.0, 0.0, height))   # camara nivelada, sin cabeceo
 # La distancia sale de la restriccion que mande: el alto de la composicion o el
 # ancho de la isla. En las especies bajas manda la isla -> no se puede acercar
 # mas sin recortarla, y por eso el arbol se ve chico (es geometria, no un bug).
@@ -354,6 +367,18 @@ _d_h = _max_r + _max_r / (FRAME_FILL * math.tan(_half_h))
 dist = max(_d_v, _d_h)
 print(f"  [INFO] encuadre: dist={dist:.3f} height={height:.3f} "
       f"(manda {'alto' if _d_v >= _d_h else 'ancho de isla'}, radio={_max_r:.2f})")
+
+if SOLO_ENCUADRE:
+    # Formato parseable para encadenar con el render de las etapas jovenes
+    print(f"ENCUADRE {SPECIES} {dist:.4f} {height:.4f}")
+    sys.exit(0)
+
+if DIST_FIJA is not None:   dist = DIST_FIJA
+if HEIGHT_FIJA is not None: height = HEIGHT_FIJA
+if DIST_FIJA is not None or HEIGHT_FIJA is not None:
+    print(f"  [INFO] encuadre CLAVADO: dist={dist:.3f} height={height:.3f}")
+
+TARGET = mathutils.Vector((0.0, 0.0, height))   # camara nivelada, sin cabeceo
 
 print(f"\n=== RENDER: {FRAMES} frames, dist={dist:.3f}, height={height:.3f}, samples=128 ===")
 print(f"  Output: {OUT_DIR}")

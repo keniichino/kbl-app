@@ -14,6 +14,11 @@ desktop.ini
 blender/addon.py
 blender/*.png
 blender/turntable/
+# Backups automaticos de Blender: se reescriben en cada corrida, no aportan nada
+blender/*.blend1
+# Escenas intermedias de las etapas de crecimiento: se regeneran con
+# especies_isla.py --etapa N --solo-blend, no hace falta versionarlas
+blender/*_etapa*.blend
 
 # Andamiaje de desarrollo (diagnostico y borradores, no van al repo)
 # test_rosa.py SI se versiona: es la herramienta de validacion de 1 frame

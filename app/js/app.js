@@ -36,23 +36,67 @@ const scene3d = $('#scene-3d');
 const focoViewer = initViewer360(scene3d, { frames: 36 });
 const focoCanvas = scene3d.querySelector('canvas');
 
-// Curva de crecimiento: arranca chico (no invisible) y acelera al principio
+// Etapas de crecimiento: cada una es un turntable de una geometría distinta.
+// La última es el árbol maduro, que son los mismos archivos que usa el Bosque
+// (por eso vive en la raíz de la especie y no en una subcarpeta).
+const ETAPAS = 4;
+// Especies con etapas renderizadas. Las que faltan crecen por escala (abajo);
+// se listan a mano para no disparar 36 pedidos condenados a 404 por sesión.
+// Al agregar una etapa nueva con blender/render_etapas.sh, sumarla acá.
+const CON_ETAPAS = new Set(['arbolito', 'roble', 'sakura']);
+const rutaEtapa = (esp, etapa, i) => {
+  const ff = String(i).padStart(2, '0');
+  return etapa >= ETAPAS - 1
+    ? `assets/360/${esp}/${ff}.webp`
+    : `assets/360/${esp}/etapa${etapa}/${ff}.webp`;
+};
+
+// Fallback: mientras una especie no tenga renderizadas sus etapas, sigue
+// creciendo por escala como antes (una sola geometría, la madura, agrandándose).
+// Curva: arranca chico (no invisible) y acelera al principio.
 function escalaCrecimiento(p) {
   return 0.12 + 0.88 * Math.pow(Math.min(Math.max(p, 0), 1), 0.55);
 }
 
-let islaCargada = null; // evita recargar/resetear el giro si la especie no cambió
+let islaCargada = null;   // evita recargar/resetear el giro si la especie no cambió
+let modoEtapas = false;   // false = fallback por escala
+
+function cargarIslaPorEscala(islaKey) {
+  modoEtapas = false;
+  focoViewer.setSrc(
+    (i) => `assets/360/${islaKey}/${String(i).padStart(2, '0')}.webp`,
+    () => { scene3d.style.display = 'none'; islaCargada = null; } // sin assets: fallback al SVG
+  );
+}
 
 function cargarIsla3D(durationMin) {
   const islaKey = ISLA_POR_MIN[durationMin];
   if (islaKey !== islaCargada) {
     islaCargada = islaKey;
-    focoViewer.setSrc(
-      (i) => `assets/360/${islaKey}/${String(i).padStart(2, '0')}.webp`,
-      () => { scene3d.style.display = 'none'; islaCargada = null; } // sin assets: fallback al SVG
+    if (!CON_ETAPAS.has(islaKey)) { cargarIslaPorEscala(islaKey); scene3d.style.display = 'flex'; return; }
+    modoEtapas = true;
+    focoViewer.setEtapas(
+      (etapa, i) => rutaEtapa(islaKey, etapa, i),
+      ETAPAS,
+      (etapa) => {
+        // Falta una etapa intermedia: esta especie todavía no se re-renderizó.
+        // Si lo que falta es la madura, no hay assets en absoluto → al SVG.
+        if (etapa >= ETAPAS - 1) { scene3d.style.display = 'none'; islaCargada = null; }
+        else if (modoEtapas) cargarIslaPorEscala(islaKey);
+      }
     );
   }
   scene3d.style.display = 'flex';
+}
+
+function aplicarCrecimiento(p) {
+  if (modoEtapas) {
+    // La geometría cambia: la isla queda quieta y crece sólo la planta.
+    if (focoCanvas) focoCanvas.style.transform = '';
+    focoViewer.setProgreso(p);
+  } else if (focoCanvas) {
+    focoCanvas.style.transform = `scale(${escalaCrecimiento(p).toFixed(3)})`;
+  }
 }
 
 function mostrarCrecimiento3D(active) {
@@ -60,9 +104,10 @@ function mostrarCrecimiento3D(active) {
 }
 
 // Vista previa en la pantalla de inicio: la isla de la duración elegida,
-// a tamaño fijo (no crece), reemplaza el pasto/semilla 2D de antes.
+// ya madura (es el premio, no el punto de partida) y a tamaño fijo.
 function mostrarPreviewIdle() {
   cargarIsla3D(selectedMin);
+  focoViewer.setProgreso(1);
   if (focoCanvas) focoCanvas.style.transform = 'scale(0.62)';
 }
 
@@ -127,7 +172,7 @@ function tick() {
 
   if (scene3d.style.display !== 'none') {
     renderTree(svg, p, SPECIES[active.durationMin], 'grow', { soloCielo: true });
-    if (focoCanvas) focoCanvas.style.transform = `scale(${escalaCrecimiento(p).toFixed(3)})`;
+    aplicarCrecimiento(p);
   } else {
     renderTree(svg, p, SPECIES[active.durationMin], 'grow');
   }

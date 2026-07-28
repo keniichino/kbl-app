@@ -21,6 +21,23 @@ SEED = SEEDS_DEF[ESPECIE]
 if "--seed" in argv:
     SEED = int(argv[argv.index("--seed") + 1])
 TEST_MODE = "--test" in argv
+# --etapa N: etapa de crecimiento (0=brote .. ETAPAS-1=maduro). Sin el flag se
+# construye el arbol maduro de siempre. Ver "etapa de crecimiento" mas abajo.
+ETAPAS = 4
+ETAPA = ETAPAS - 1
+if "--etapa" in argv:
+    ETAPA = int(argv[argv.index("--etapa") + 1])
+assert 0 <= ETAPA < ETAPAS, ETAPA
+# Encuadre clavado: las etapas jovenes DEBEN usar la camara de la etapa madura.
+# Si cada una calculase la suya, la camara se acercaria al brote hasta llenar el
+# cuadro y las 4 etapas se verian del mismo tamaño -> cero sensacion de
+# crecimiento, que es justo lo que se quiere lograr.
+CAM_DIST_FIJA = None
+if "--cam-dist" in argv:
+    CAM_DIST_FIJA = float(argv[argv.index("--cam-dist") + 1])
+CAM_Z_FIJA = None
+if "--cam-z" in argv:
+    CAM_Z_FIJA = float(argv[argv.index("--cam-z") + 1])
 # --inspect: construye la escena, imprime medidas y sale SIN renderizar.
 # Sirve para diagnosticar geometria (p. ej. si una almohadilla de follaje quedo
 # separada del tronco) sin pagar los minutos de un turntable.
@@ -63,6 +80,8 @@ if "--glare-size" in argv:
 
 OUT_DIR = r"G:\Mi unidad\KBL APP Personal\blender"
 TT_DIR = os.path.join(OUT_DIR, "turntable_" + ESPECIE)
+if ETAPA < ETAPAS - 1:
+    TT_DIR = os.path.join(TT_DIR, "etapa%d" % ETAPA)
 
 # ------------------------------------------------------------------ constantes de encuadre (medidas de arbol_isla.blend)
 CAM_DIST = 12.193          # misma camara que la sakura -> misma escala en pantalla
@@ -1445,6 +1464,74 @@ def deco_bonsai():
 {"arbolito": deco_arbolito, "roble": deco_roble, "sakura": deco_sakura,
  "flor": deco_flor, "bonsai": deco_bonsai}[ESPECIE]()
 
+# ------------------------------------------------------------------ etapa de crecimiento
+# La isla NO crece: el suelo es el suelo, y dejarlo fijo es justamente lo que
+# hace que se lea "el arbol crecio" y no "la camara se acerco" (que es lo que
+# pasaba escalando el canvas entero en la app).
+# Tres palancas sobre la planta, no una:
+#   1. tamaño        -> escala anclada al nivel del suelo (z=0)
+#   2. densidad      -> menos hojas instanciadas, y no proporcionales al area:
+#                       un plantin es mas ralo que un arbol hecho, no solo mas chico
+#   3. hoja relativa -> las hojas de un plantin son GRANDES respecto a su tronco,
+#                       asi que se compensa parte del achique para que no queden
+#                       como polvo verde
+# Lo que no se toca: reescribir cada builder para que un arbol joven tenga el
+# tronco proporcionalmente mas fino y menos ramas. Eso es la vuelta fina; esto
+# ya da geometria distinta por etapa, que es el salto grande.
+MADUREZ = (0.26, 0.50, 0.75, 1.0)[ETAPA]
+
+# Todo lo que es suelo o esta apoyado en el: queda igual en las 4 etapas.
+ISLA_PREFIJOS = ('pasto', 'tierra', 'piedra', 'sombra', 'flor_isla', 'hojita',
+                 'hoja_cantero', 'musgo', 'maceta', 'arena', 'petalo_suelto')
+# Frutos: un arbol joven no da. Aparecen recien en la ultima etapa.
+DECO_ADULTA = ('bellota',)
+
+def _es_isla(nombre):
+    return any(nombre == p or nombre.startswith(p + '.') or nombre.startswith(p + '_')
+               for p in ISLA_PREFIJOS)
+
+def _es_adulta(nombre):
+    return any(nombre == p or nombre.startswith(p + '.') or nombre.startswith(p + '_')
+               for p in DECO_ADULTA)
+
+if MADUREZ < 1.0:
+    m = MADUREZ
+    tocados = 0
+    for ob in list(scene.objects):
+        if ob.type not in {'MESH', 'CURVE'}:
+            continue
+        if _es_isla(ob.name):
+            # Las hojas/petalos "cayendo" del deco estan a media altura, pensados
+            # para caer de una copa madura. Como no escalan, en un brote quedan
+            # flotando sueltos en el aire a la altura de un arbol que todavia no
+            # existe. Las apoyadas en el pasto (z~0) se quedan: esas si tienen
+            # sentido en cualquier etapa.
+            if ob.location.z > 0.1:
+                ob.hide_render = True
+            continue
+        if _es_adulta(ob.name):
+            ob.hide_render = True
+            continue
+        # Los meshes fuente de instancia (los `*_ob` ocultos que las particulas
+        # copian) no se escalan: su tamaño se controla por particle_size, y
+        # tocarlos escalaria las hojas dos veces.
+        if ob.hide_render or ob.name.endswith('_ob'):
+            continue
+        ob.scale = tuple(s * m for s in ob.scale)
+        ob.location = tuple(c * m for c in ob.location)  # ancla en el suelo (z=0)
+        tocados += 1
+        for psys in getattr(ob, 'particle_systems', []):
+            s = psys.settings
+            # Densidad: el area del hull cae con m^2; se usa un exponente algo
+            # mayor para que ademas quede mas ralo, no solo mas chico.
+            s.count = max(24, int(round(s.count * (m ** 1.9))))
+            # y la hoja se agranda en proporcion (queda chica en absoluto, pero
+            # grande respecto a la planta, como en un plantin de verdad)
+            s.particle_size = s.particle_size * (1.0 / m) ** 0.45
+    print("=== ETAPA %d madurez %.2f -> %d objetos de planta escalados" % (ETAPA, m, tocados))
+else:
+    print("=== ETAPA %d (maduro): geometria sin atenuar" % ETAPA)
+
 # ------------------------------------------------------------------ pivot
 pivot = bpy.data.objects.new("pivot", None)
 scene.collection.objects.link(pivot)
@@ -1487,7 +1574,13 @@ half_h = math.atan(18.0 * 0.8 / CAM_LENS)
 # que manda ocupe siempre la misma fraccion del cuadro y la composicion quede
 # centrada. Ojo: para las especies bajas manda el ANCHO DE LA ISLA, no el arbol
 # -> no se puede acercar mas sin recortar la isla.
-if not FIXED_CAM:
+if CAM_DIST_FIJA is not None or CAM_Z_FIJA is not None:
+    # Encuadre heredado de la etapa madura: sin esto cada etapa se auto-encuadra
+    # y el brote llenaria el cuadro igual que el arbol hecho.
+    if CAM_DIST_FIJA is not None: CAM_DIST = CAM_DIST_FIJA
+    if CAM_Z_FIJA is not None:    CAM_Z = CAM_Z_FIJA
+    print("=== ENCUADRE clavado: dist %.3f z %.3f" % (CAM_DIST, CAM_Z))
+elif not FIXED_CAM:
     _hz = (hi.z - lo.z) / 2.0
     CAM_Z = (hi.z + lo.z) / 2.0
     _d_v = max_r + _hz / (FRAME_FILL * math.tan(half_v))
@@ -1652,6 +1745,21 @@ if INSPECT_MODE:
                  b[0], b[1], b[2], b[3], b[4], b[5]))
     sys.exit(0)
 
+# --solo-blend: construye la escena y guarda el .blend sin renderizar nada.
+# Es el primer paso del pipeline de etapas: los frames los saca despues
+# render_species.py desde este archivo, que es el mismo camino por el que se
+# generaron los assets maduros que ya estan en produccion. Generarlos por
+# caminos distintos daria encuadres apenas distintos y la isla "saltaria" de
+# tamaño al pasar de la ultima etapa joven al arbol hecho.
+if "--solo-blend" in argv:
+    destino = os.path.join(
+        OUT_DIR,
+        f"{ESPECIE}_isla.blend" if ETAPA == ETAPAS - 1
+        else f"{ESPECIE}_isla_etapa{ETAPA}.blend")
+    bpy.ops.wm.save_as_mainfile(filepath=destino)
+    print("=== BLEND OK", destino, round(time.time() - t0, 1), "s")
+    sys.exit(0)
+
 scene.render.image_settings.file_format = 'PNG'
 scene.render.image_settings.color_mode = 'RGBA'
 if TEST_MODE:
@@ -1682,6 +1790,11 @@ else:
     print("=== TURNTABLE WORST BORDER ALPHA:", round(worst_alpha, 3),
           "frame", worst_frame, ("CLIPPING!" if worst_alpha > 0.01 else "ok"))
     pivot.rotation_euler.z = 0
-    bpy.ops.wm.save_as_mainfile(
-        filepath=os.path.join(OUT_DIR, f"{ESPECIE}_isla.blend"))
-    print("=== BLEND OK")
+    # El .blend de referencia es el del arbol maduro: una etapa joven no debe
+    # pisarlo (render_species.py y las inspecciones parten de ese archivo).
+    if ETAPA == ETAPAS - 1:
+        bpy.ops.wm.save_as_mainfile(
+            filepath=os.path.join(OUT_DIR, f"{ESPECIE}_isla.blend"))
+        print("=== BLEND OK")
+    else:
+        print("=== BLEND OMITIDO (etapa %d, no pisa el maduro)" % ETAPA)
