@@ -8,7 +8,7 @@
   2. https://n8n.kblia.cloud → Credentials → **KBL Supabase (Header Auth)** → Name: `apikey`, Value: la service_role → Save.
   3. Avisame y activo el workflow. **No la pegues en el chat.**
 - [ ] **Revocar el token de Supabase** que anduvo pegado en el chat: https://supabase.com/dashboard/account/tokens → borrar.
-- [ ] **Decidir qué hacemos con los consumos de 1 pago duplicados** — hay 13 movimientos cargados en `gastos` **y** en `cuotas` (con cuota 1/1). Si algo suma las dos tablas, cuenta doble. Ver "Cruce contra los resúmenes" abajo.
+- [ ] **Confirmar los 6 gastos del 26/07 que cargó el agente de WhatsApp** ($96.500) — no coinciden con ningún movimiento del resumen y sus montos se parecen sospechosamente a los consumos reales de ese día ($98.157). Si son los mismos cargados a ojo, hay que borrarlos. No los toqué porque los montos no son idénticos y no quise borrar plata por sospecha.
 - [ ] ~~Subir el CSV de tu tarjeta~~ — ya no hace falta para agosto: se cargó todo a mano desde las fotos de los resúmenes (28/07). Sigue siendo útil si querés automatizar los meses que vienen.
 - [ ] **Mandar tu número de WhatsApp** (formato `54911XXXXXXXX@s.whatsapp.net`) — opcional: el nodo ya está en el workflow, desactivado. El mail no lo necesita.
 - [ ] **Instalar la app en la PC**: Chrome/Edge → https://keniichino.github.io/kbl-app/ → ícono de instalar en la barra de direcciones.
@@ -32,9 +32,20 @@ Se cruzaron los tres resúmenes de agosto 2026 (Mercado Pago, Galicia Mastercard
 - **Galicia Visa**: faltaban **20 consumos por $360.881,55** (todo lo posterior al 16/07). Cargados.
 - **Galicia Mastercard**: faltaban ADOBE y MERPAGO*MELI. Cargados. Los 4 EDUCACIONIT del resumen están consolidados en una sola fila de $81.358 (la suma real es $81.358,16).
 - **Dólares**: se cargaron los 10 consumos en USD. El total por tarjeta da **exacto** contra el resumen (U$D 8,09 en la Mastercard, U$D 30,16 en la Visa).
-- **Pendiente de aclarar**: la cuota MERPAGO*MERCADOLIBRE de $23.213,19 (2 de 9) tiene un reverso de exactamente -$23.213,19 el 13/07. Si te devolvieron la compra, hay que dar de baja las 7 cuotas restantes. No está cargada.
-- **No se pudo cuadrar el total de la Mastercard**: los movimientos de las fotos suman ~$219.035 contra los $600.848,82 del resumen. Faltan fotos del tramo 24/07 al cierre, o el total arrastra saldo anterior.
-- **Los 6 gastos del 26/07 que cargó el agente de WhatsApp** ($96.500 en total) no corresponden a ningún movimiento real de los resúmenes: son montos redondeados a mano. Explican exactamente el desvío entre la app y el resumen de la Visa.
+- **Cuota MERPAGO*MERCADOLIBRE $23.213,19 (2 de 9)**: era una compra devuelta (confirmado por Keni) — el reverso de -$23.213,19 del 13/07 la cancela. No se carga, y las 7 cuotas restantes no se van a cobrar.
+- **Los 6 gastos del 26/07 que cargó el agente de WhatsApp** ($96.500 en total) no corresponden a ningún movimiento de los resúmenes: son montos redondeados a mano. Quedan pendientes de confirmar (ver arriba).
+
+**Las tres tarjetas cierran al centavo contra el resumen** (`cuotas`, estado activa):
+
+| tarjeta | app | resumen | dif |
+|---|---|---|---|
+| Galicia Visa 6255 | $939.861,61 / U$D 30,16 | ídem | $0,00 |
+| Galicia Mastercard 7541 | $600.848,82 / U$D 8,09 | ídem | $0,00 |
+| Mercado Pago | $383.889,47 | ídem | $0,00 |
+
+Para llegar ahí se completaron los consumos de un pago en `cuotas` (todo consumo con tarjeta tiene que estar en el monto a pagar, sea en cuotas o de un pago) y se corrigieron a valor exacto 9 montos que estaban redondeados al peso.
+
+**Criterio acordado — `gastos` y `cuotas` no son redundantes.** Un consumo de un pago va en las dos tablas a propósito: `gastos` registra **cuándo gastaste**, `cuotas` **cuándo lo pagás**. Los dos números tienen que existir. Lo que hay que evitar es que un mismo cálculo sume las dos tablas.
 
 ## Decisiones pendientes
 - [ ] Multi-usuario real (login) — a futuro, para cuando tus amigos usen la app cada uno con su cuenta.
