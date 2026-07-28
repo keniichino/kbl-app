@@ -7,8 +7,8 @@
   1. https://supabase.com/dashboard/project/jcsenhpuvvbxcxapoaia/settings/api-keys → copiar la **service_role** (la secreta, NO la anon).
   2. https://n8n.kblia.cloud → Credentials → **KBL Supabase (Header Auth)** → Name: `apikey`, Value: la service_role → Save.
   3. Avisame y activo el workflow. **No la pegues en el chat.**
-- [ ] **Revocar el token de Supabase** que anduvo pegado en el chat: https://supabase.com/dashboard/account/tokens → borrar.
-- [ ] **Confirmar los 6 gastos del 26/07 que cargó el agente de WhatsApp** ($96.500) — no coinciden con ningún movimiento del resumen y sus montos se parecen sospechosamente a los consumos reales de ese día ($98.157). Si son los mismos cargados a ojo, hay que borrarlos. No los toqué porque los montos no son idénticos y no quise borrar plata por sospecha.
+- [x] ~~Revocar el token de Supabase~~ — **decisión de Keni (28/07): queda activo a propósito, lo usa para otra cosa. No volver a pedirlo.**
+- [x] ~~Los 6 gastos del agente de WhatsApp~~ — borrados el 28/07. **Regla oficial: los gastos reales son los de los resúmenes de Galicia y Mercado Pago.** Lo que el agente cargue por WhatsApp y no aparezca en un resumen, no cuenta.
 - [ ] ~~Subir el CSV de tu tarjeta~~ — ya no hace falta para agosto: se cargó todo a mano desde las fotos de los resúmenes (28/07). Sigue siendo útil si querés automatizar los meses que vienen.
 - [ ] **Mandar tu número de WhatsApp** (formato `54911XXXXXXXX@s.whatsapp.net`) — opcional: el nodo ya está en el workflow, desactivado. El mail no lo necesita.
 - [ ] **Instalar la app en la PC**: Chrome/Edge → https://keniichino.github.io/kbl-app/ → ícono de instalar en la barra de direcciones.
