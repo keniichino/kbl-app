@@ -5,6 +5,13 @@ import { confirmar } from './dialog.js';
 const fmtARS = new Intl.NumberFormat('es-AR', {
   style: 'currency', currency: 'ARS', minimumFractionDigits: 0, maximumFractionDigits: 0,
 });
+// Las tarjetas resumen consumos en dólares aparte de los pesos, y sin cotización
+// no se pueden sumar: cada total lleva su línea en USD cuando corresponde.
+const fmtUSD = new Intl.NumberFormat('es-AR', {
+  style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 2,
+});
+const esUsd = (c) => c.moneda === 'USD';
+const fmt = (monto, moneda) => (moneda === 'USD' ? fmtUSD : fmtARS).format(monto);
 
 const TARJETAS = [
   { key: 'visa', label: 'Visa',    emoji: '💳' },
@@ -48,9 +55,10 @@ function proyectarMeses(cuotas, cuantos = 7) {
       const fecha = addMeses(c.fecha_primer_venc, i);
       const key = mesKey(fecha);
       if (key < hoyKey) continue;
-      if (!meses[key]) meses[key] = { total: 0, items: [] };
-      meses[key].total += c.monto_cuota;
-      meses[key].items.push({ desc: c.descripcion, tarjeta: c.tarjeta, monto: c.monto_cuota, cuotaNum: c.cuota_actual + i, cuotaTotal: c.cuota_total });
+      if (!meses[key]) meses[key] = { total: 0, totalUsd: 0, items: [] };
+      if (esUsd(c)) meses[key].totalUsd += c.monto_cuota;
+      else meses[key].total += c.monto_cuota;
+      meses[key].items.push({ desc: c.descripcion, tarjeta: c.tarjeta, monto: c.monto_cuota, moneda: c.moneda, cuotaNum: c.cuota_actual + i, cuotaTotal: c.cuota_total });
     }
   }
 
@@ -65,24 +73,29 @@ function renderResumen(cuotas, primerMes) {
   if (!el || !primerMes) { if (el) el.innerHTML = ''; return; }
 
   const porTarjeta = {};
+  const porTarjetaUsd = {};
   for (const c of cuotas) {
     if (c.estado !== 'activa') continue;
     const restantes = c.cuota_total - c.cuota_actual + 1;
     for (let i = 0; i < restantes; i++) {
       const fecha = addMeses(c.fecha_primer_venc, i);
       if (mesKey(fecha) !== primerMes.key) continue;
-      porTarjeta[c.tarjeta] = (porTarjeta[c.tarjeta] || 0) + c.monto_cuota;
+      const acum = esUsd(c) ? porTarjetaUsd : porTarjeta;
+      acum[c.tarjeta] = (acum[c.tarjeta] || 0) + c.monto_cuota;
     }
   }
 
   const total = Object.values(porTarjeta).reduce((a, b) => a + b, 0);
+  const totalUsd = Object.values(porTarjetaUsd).reduce((a, b) => a + b, 0);
   const filas = TARJETAS
-    .filter((t) => porTarjeta[t.key])
+    .filter((t) => porTarjeta[t.key] || porTarjetaUsd[t.key])
     .map((t) => `
       <div class="resumen-fila">
         <span class="resumen-fila-emoji">${t.emoji}</span>
         <span class="resumen-fila-label">${t.label}</span>
-        <span class="resumen-fila-monto">${fmtARS.format(porTarjeta[t.key])}</span>
+        <span class="resumen-fila-monto">${fmtARS.format(porTarjeta[t.key] || 0)}${
+          porTarjetaUsd[t.key] ? ` <span class="monto-usd">+ ${fmtUSD.format(porTarjetaUsd[t.key])}</span>` : ''
+        }</span>
       </div>`).join('');
 
   el.innerHTML = `
@@ -91,7 +104,9 @@ function renderResumen(cuotas, primerMes) {
       ${filas}
       <div class="resumen-total">
         <span class="resumen-total-label">Total</span>
-        <span class="resumen-total-monto">${fmtARS.format(total)}</span>
+        <span class="resumen-total-monto">${fmtARS.format(total)}${
+          totalUsd ? ` <span class="monto-usd">+ ${fmtUSD.format(totalUsd)}</span>` : ''
+        }</span>
       </div>
     </div>`;
 }
@@ -104,6 +119,11 @@ function render() {
   // Hero: total del mes más próximo con cuotas
   const primerMes = proyeccion[0];
   $('#cuotas-total').textContent = primerMes ? fmtARS.format(primerMes.total) : '$ 0';
+  const heroUsd = $('#cuotas-total-usd');
+  if (heroUsd) {
+    heroUsd.hidden = !primerMes?.totalUsd;
+    heroUsd.textContent = primerMes?.totalUsd ? '+ ' + fmtUSD.format(primerMes.totalUsd) : '';
+  }
   $('#cuotas-mes-label').textContent = primerMes ? primerMes.label : new Date().toLocaleDateString('es-AR', { month: 'long', year: 'numeric' });
   $('#cuotas-activas-count').textContent = `${activas.length} cuota${activas.length !== 1 ? 's' : ''} activa${activas.length !== 1 ? 's' : ''}`;
 
@@ -149,7 +169,7 @@ function render() {
             <span class="cuota-emoji">${tarjetaEmoji(c.tarjeta)}</span>
             <div class="cuota-info">
               <div class="cuota-desc">${escapar(c.descripcion)}</div>
-              <div class="cuota-sub">${fmtARS.format(c.monto_cuota)}/cuota · ${restantes} restante${restantes !== 1 ? 's' : ''} de ${c.cuota_total}</div>
+              <div class="cuota-sub">${fmt(c.monto_cuota, c.moneda)}/cuota · ${restantes} restante${restantes !== 1 ? 's' : ''} de ${c.cuota_total}</div>
             </div>
             <div class="cuota-actions">
               <button class="cuota-ok" data-id="${c.id}" title="Marcar completada">✓</button>
@@ -159,7 +179,7 @@ function render() {
           <div class="cuota-progress-wrap">
             <div class="cuota-progress-bar" style="width:${pct}%"></div>
           </div>
-          <div class="cuota-progress-label">${pagadas} de ${c.cuota_total} pagadas — próxima ${fmtARS.format(c.monto_cuota)}</div>
+          <div class="cuota-progress-label">${pagadas} de ${c.cuota_total} pagadas — próxima ${fmt(c.monto_cuota, c.moneda)}</div>
         </div>`;
     }).join('');
 }

@@ -330,6 +330,7 @@ const toRemoteCuota = (c) => ({
   cuota_total: c.cuota_total,
   fecha_primer_venc: c.fecha_primer_venc,
   estado: c.estado,
+  moneda: c.moneda || 'ARS',
   created_at: c.created_at,
 });
 const fromRemoteCuota = (r) => ({
@@ -341,6 +342,7 @@ const fromRemoteCuota = (r) => ({
   cuota_total: Number(r.cuota_total),
   fecha_primer_venc: r.fecha_primer_venc,
   estado: r.estado,
+  moneda: r.moneda || 'ARS',   // las cuotas viejas no tienen el campo: son pesos
   created_at: r.created_at,
 });
 
