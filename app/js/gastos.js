@@ -1,6 +1,7 @@
 // ====== Módulo Gastos — carga en 5 segundos ======
 import { getGastos, addGasto, removeGasto } from './store.js';
 import { confirmar } from './dialog.js';
+import { equivalente, casaActual, siguienteCasa, onCotizacion } from './cotizacion.js';
 
 export const CATEGORIAS = [
   { key: 'comida',     emoji: '🍔', label: 'Comida' },
@@ -66,15 +67,18 @@ function render() {
     return f.getFullYear() === y && f.getMonth() === m;
   });
 
-  // Total del mes. Pesos y dólares NO se suman: sin cotización, mezclarlos daría
-  // un número que no significa nada. Van en dos líneas, y la de dólares aparece
-  // sólo si ese mes hubo alguno.
+  // Total del mes. Pesos y dólares NO se suman en el número grande: son monedas
+  // distintas. Los dólares van en su propia línea, con el equivalente en pesos
+  // al lado (a la cotización elegida) para que el orden de magnitud se entienda.
   const enPesos = delMes.filter((g) => g.moneda !== 'USD');
   const enDolares = delMes.filter((g) => g.moneda === 'USD');
+  const totalUsd = enDolares.reduce((a, g) => a + g.monto, 0);
   $('#gasto-total').textContent = fmtARS.format(enPesos.reduce((a, g) => a + g.monto, 0));
   const elUsd = $('#gasto-total-usd');
   elUsd.hidden = enDolares.length === 0;
-  elUsd.textContent = '+ ' + fmtUSD.format(enDolares.reduce((a, g) => a + g.monto, 0));
+  const eq = equivalente(totalUsd);
+  elUsd.innerHTML = '+ ' + fmtUSD.format(totalUsd)
+    + (eq ? ` <span class="cotiz-eq" role="button" tabindex="0" title="Tocá para cambiar de cotización">${eq} <span class="cotiz-casa">${casaActual().label}</span></span>` : '');
   $('#gastos-mes-label').textContent = new Date().toLocaleDateString('es-AR', { month: 'long', year: 'numeric' });
 
   // El desglose por categoría es sólo de pesos, por lo mismo.
@@ -137,6 +141,13 @@ function agregar() {
 }
 
 export function initGastos() {
+  // La cotización llega asincrónica (y puede cambiar de casa): repintamos.
+  onCotizacion(() => { if (!$('#gasto-total-usd')?.hidden) render(); });
+  $('#gasto-total-usd').addEventListener('click', (e) => {
+    if (!e.target.closest('.cotiz-eq')) return;
+    siguienteCasa();
+  });
+
   $('#cat-chips').innerHTML = CATEGORIAS
     .map((c) => `<button class="chip cat-chip ${c.key === catSeleccionada ? 'selected' : ''}" data-cat="${c.key}">${c.emoji} ${c.label}</button>`)
     .join('');

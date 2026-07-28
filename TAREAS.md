@@ -3,10 +3,7 @@
 > Ver [`PROMPTS_EXPERTOS.md`](PROMPTS_EXPERTOS.md) para el estado completo del proyecto y prompts listos para abrir en chats nuevos por tema (3D/Blender, crecimiento real, backend/login, n8n, producto).
 
 ## Ahora
-- [ ] **Pegar la `service_role` en la credencial de n8n** — es lo único que traba el resumen semanal por mail (2 minutos):
-  1. https://supabase.com/dashboard/project/jcsenhpuvvbxcxapoaia/settings/api-keys → copiar la **service_role** (la secreta, NO la anon).
-  2. https://n8n.kblia.cloud → Credentials → **KBL Supabase (Header Auth)** → Name: `apikey`, Value: la service_role → Save.
-  3. Avisame y activo el workflow. **No la pegues en el chat.**
+- [x] ~~Pegar la `service_role` en la credencial de n8n~~ — **hecho y verificado el 28/07.** El resumen semanal quedó **ACTIVO**: te llega todos los lunes a las 9 a keniburgues@gmail.com. Se mandó uno de prueba el 28/07 (revisá la casilla).
 - [x] ~~Revocar el token de Supabase~~ — **decisión de Keni (28/07): queda activo a propósito, lo usa para otra cosa. No volver a pedirlo.**
 - [x] ~~Los 6 gastos del agente de WhatsApp~~ — borrados el 28/07. **Regla oficial: los gastos reales son los de los resúmenes de Galicia y Mercado Pago.** Lo que el agente cargue por WhatsApp y no aparezca en un resumen, no cuenta.
 - [ ] ~~Subir el CSV de tu tarjeta~~ — ya no hace falta para agosto: se cargó todo a mano desde las fotos de los resúmenes (28/07). Sigue siendo útil si querés automatizar los meses que vienen.
@@ -57,4 +54,6 @@ Para llegar ahí se completaron los consumos de un pago en `cuotas` (todo consum
 - **Gastos**: carga rápida, categorías, sync en la nube, con login + RLS (cada cuenta ve solo lo suyo). **Se puede cargar en pesos o en dólares** (selector al lado del monto, arranca en pesos). Los dólares nunca se suman a los pesos: van en su propia línea, en la app y en el mail semanal.
 - **Notas**: lista + editor con autosave, sync en la nube.
 - **Cuotas**: proyección de los próximos meses por tarjeta.
-- **n8n** (`KBL - Resumen Semanal Gastos`, id `fwNr0Wokpp1qV0oU`): lunes 9:00 → lee gastos de los últimos 7 días + cuotas activas → arma un mail HTML → Gmail a keniburgues@gmail.com. Inactivo hasta que la credencial tenga la service_role (con la anon key devuelve 0 filas por RLS). El código del nodo "Armar resumen" vive en `n8n/resumen_semanal_code.js` y se sube con `node n8n/actualizar_resumen_semanal.js`.
+- **n8n** (`KBL - Resumen Semanal Gastos`, id `fwNr0Wokpp1qV0oU`): **ACTIVO desde el 28/07**. Lunes 9:00 (hora de Buenos Aires) → gastos de los últimos 7 días + cuotas activas → mail HTML por Gmail a keniburgues@gmail.com. Pesos y dólares van separados en las dos secciones. Probado end-to-end contra los datos reales: los cuatro totales (gastos ARS/USD y cuotas de agosto ARS/USD) dan exactos contra SQL.
+  - El código del nodo "Armar resumen" vive en `n8n/resumen_semanal_code.js`; se sube con `node n8n/actualizar_resumen_semanal.js` (`--sin-mail` apaga el envío para probar, `--dump` sólo imprime el JSON).
+  - **Trampa que ya nos mordió:** los nodos HTTP llevan `executeOnce: true`. Sin eso, "Traer cuotas" se ejecuta una vez **por cada gasto** de entrada y el total del mes sale multiplicado (dio ×22 el 28/07: $42M en vez de $1,9M).

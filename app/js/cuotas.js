@@ -1,6 +1,7 @@
 // ====== Módulo Cuotas ======
 import { getCuotas, addCuota, removeCuota, updateCuotaEstado } from './store.js';
 import { confirmar } from './dialog.js';
+import { equivalente, casaActual, siguienteCasa, onCotizacion, ahorroVsTarjeta, fmtARS0 } from './cotizacion.js';
 
 const fmtARS = new Intl.NumberFormat('es-AR', {
   style: 'currency', currency: 'ARS', minimumFractionDigits: 0, maximumFractionDigits: 0,
@@ -98,6 +99,18 @@ function renderResumen(cuotas, primerMes) {
         }</span>
       </div>`).join('');
 
+  // Los dólares del resumen los cubre comprando (MEP en Mercado Pago) y
+  // transfiriendo a Galicia. Mostramos cuánto le sale eso hoy, y cuánto más
+  // pagaría si dejara que el banco se los cobre al dólar tarjeta.
+  const comp = totalUsd ? ahorroVsTarjeta(totalUsd) : null;
+  const bloqueUsd = comp ? `
+      <div class="resumen-usd-nota">
+        Cubrir los ${fmtUSD.format(totalUsd)} te sale <b>${fmtARS0(comp.propio)}</b>
+        comprando ${casaActual().label}.
+        <br>Si los pagás en pesos con la tarjeta: ${fmtARS0(comp.conTarjeta)}
+        → <b class="resumen-ahorro">ahorrás ${fmtARS0(comp.ahorro)}</b>.
+      </div>` : '';
+
   el.innerHTML = `
     <div class="cuotas-resumen-wrap">
       <div class="cuotas-proy-title">Próximo resumen · ${primerMes.label}</div>
@@ -108,6 +121,7 @@ function renderResumen(cuotas, primerMes) {
           totalUsd ? ` <span class="monto-usd">+ ${fmtUSD.format(totalUsd)}</span>` : ''
         }</span>
       </div>
+      ${bloqueUsd}
     </div>`;
 }
 
@@ -122,7 +136,11 @@ function render() {
   const heroUsd = $('#cuotas-total-usd');
   if (heroUsd) {
     heroUsd.hidden = !primerMes?.totalUsd;
-    heroUsd.textContent = primerMes?.totalUsd ? '+ ' + fmtUSD.format(primerMes.totalUsd) : '';
+    const eq = primerMes?.totalUsd ? equivalente(primerMes.totalUsd) : '';
+    heroUsd.innerHTML = primerMes?.totalUsd
+      ? '+ ' + fmtUSD.format(primerMes.totalUsd)
+        + (eq ? ` <span class="cotiz-eq" role="button" tabindex="0" title="Tocá para cambiar de cotización">${eq} <span class="cotiz-casa">${casaActual().label}</span></span>` : '')
+      : '';
   }
   $('#cuotas-mes-label').textContent = primerMes ? primerMes.label : new Date().toLocaleDateString('es-AR', { month: 'long', year: 'numeric' });
   $('#cuotas-activas-count').textContent = `${activas.length} cuota${activas.length !== 1 ? 's' : ''} activa${activas.length !== 1 ? 's' : ''}`;
@@ -221,6 +239,13 @@ function agregar() {
 }
 
 export function initCuotas() {
+  // La cotización llega asincrónica y puede cambiar de casa al tocarla.
+  onCotizacion(() => render());
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('#cuotas-total-usd .cotiz-eq')) return;
+    siguienteCasa();
+  });
+
   // Chips de tarjeta
   $('#cuota-tarjeta-chips').innerHTML = TARJETAS
     .map((t) => `<button class="chip cat-chip ${t.key === tarjetaSel ? 'selected' : ''}" data-tk="${t.key}">${t.emoji} ${t.label}</button>`)

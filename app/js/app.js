@@ -6,6 +6,7 @@ import { initGastos, renderGastos } from './gastos.js';
 import { initViewer360 } from './viewer360.js';
 import { initNotas, renderNotas } from './notas.js';
 import { initCuotas, renderCuotas } from './cuotas.js';
+import { initCotizacion } from './cotizacion.js';
 import { confirmar } from './dialog.js';
 
 const $ = (sel) => document.querySelector(sel);
@@ -420,6 +421,7 @@ async function arrancarApp() {
   initGastos();
   initNotas();
   initCuotas();
+  initCotizacion(); // después de los módulos: al llegar la cotización los repinta
   initIslas();
   resetToIdle(); // render inmediato; el sync ajusta el estado si hace falta
   await initSync(onRemoteChange);
