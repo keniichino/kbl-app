@@ -581,6 +581,44 @@ body[data-phase="noche"] .tabbar { background: linear-gradient(150deg, rgba(255,
 }
 #gasto-monto { font-size: 1.5rem; text-align: center; }
 .gasto-form input::placeholder { color: #9ab0a2; }
+
+/* Moneda: control segmentado al lado del monto, mismo lenguaje visual que el
+   selector de especies del Bosque. Arranca siempre en pesos. */
+.monto-row { display: flex; gap: 8px; align-items: stretch; }
+.monto-row #gasto-monto { flex: 1; min-width: 0; }
+.seg-moneda {
+  display: flex;
+  gap: 3px;
+  flex-shrink: 0;
+  background: rgba(110, 125, 118, .14);
+  border-radius: 14px;
+  padding: 3px;
+}
+.seg-op {
+  border: none;
+  background: transparent;
+  font: 800 .95rem var(--font);
+  color: var(--ink-soft);
+  padding: 0 12px;
+  border-radius: 11px;
+  cursor: pointer;
+  transition: background .15s, color .15s, box-shadow .15s;
+}
+.seg-op.selected {
+  background: #fff;
+  color: var(--ink);
+  box-shadow: 0 2px 8px rgba(35, 64, 50, .18);
+}
+/* Total en dolares: segunda linea del hero, aparece solo si el mes tuvo alguno.
+   No se suma a los pesos: sin cotizacion el numero no significaria nada. */
+.gasto-total-usd {
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: var(--ink-soft);
+  margin-top: 2px;
+}
+.gasto-monto.es-usd { color: #2f7d5c; }
+
 .cat-chips { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
 .cat-chip { flex-shrink: 0; font-size: .85rem; padding: 8px 12px; }
 

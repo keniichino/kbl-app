@@ -115,11 +115,19 @@
       <div class="gasto-hero">
         <div class="gasto-total" id="gasto-total">$ 0</div>
         <div class="gasto-total-sub">este mes</div>
+        <!-- Los dolares van aparte: sin cotizacion no se pueden sumar a los pesos -->
+        <div class="gasto-total-usd" id="gasto-total-usd" hidden></div>
         <div class="gasto-cats-resumen" id="gasto-cats-resumen"></div>
       </div>
 
       <div class="gasto-form">
-        <input id="gasto-monto" type="text" inputmode="decimal" placeholder="$ 0" autocomplete="off">
+        <div class="monto-row">
+          <input id="gasto-monto" type="text" inputmode="decimal" placeholder="$ 0" autocomplete="off">
+          <div class="seg-moneda" id="gasto-moneda" role="group" aria-label="Moneda">
+            <button type="button" class="seg-op selected" data-moneda="ARS">$</button>
+            <button type="button" class="seg-op" data-moneda="USD">US$</button>
+          </div>
+        </div>
         <input id="gasto-desc" type="text" placeholder="¿En qué fue? (opcional)" autocomplete="off">
         <div class="cat-chips" id="cat-chips"></div>
         <div class="cat-chips gasto-tarjeta-row" id="gasto-tarjeta-chips"></div>

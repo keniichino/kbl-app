@@ -204,6 +204,7 @@ const toRemoteGasto = (g) => ({
   descripcion: g.descripcion || null,
   categoria: g.categoria,
   tarjeta: g.tarjeta || null,
+  moneda: g.moneda || 'ARS',
   fecha: g.fecha,
   created_at: new Date(g.ts).toISOString(),
 });
@@ -213,6 +214,7 @@ const fromRemoteGasto = (r) => ({
   descripcion: r.descripcion || '',
   categoria: r.categoria,
   tarjeta: r.tarjeta || null,
+  moneda: r.moneda || 'ARS',   // los gastos viejos vienen sin moneda: son pesos
   fecha: r.fecha,
   ts: Date.parse(r.created_at),
 });

@@ -22,9 +22,15 @@ const TARJETAS_GASTO = [
 const fmtARS = new Intl.NumberFormat('es-AR', {
   style: 'currency', currency: 'ARS', minimumFractionDigits: 0, maximumFractionDigits: 2,
 });
+const fmtUSD = new Intl.NumberFormat('es-AR', {
+  style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 2,
+});
+// Los gastos viejos no tienen moneda: son todos pesos.
+const fmt = (monto, moneda) => (moneda === 'USD' ? fmtUSD : fmtARS).format(monto);
 
 let catSeleccionada = 'comida';
 let tarjetaGastoSel = null;
+let monedaSel = 'ARS';   // arranca en pesos; se mantiene hasta que lo cambies
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -60,13 +66,20 @@ function render() {
     return f.getFullYear() === y && f.getMonth() === m;
   });
 
-  // Total + top categorías del mes
-  const total = delMes.reduce((acc, g) => acc + g.monto, 0);
-  $('#gasto-total').textContent = fmtARS.format(total);
+  // Total del mes. Pesos y dólares NO se suman: sin cotización, mezclarlos daría
+  // un número que no significa nada. Van en dos líneas, y la de dólares aparece
+  // sólo si ese mes hubo alguno.
+  const enPesos = delMes.filter((g) => g.moneda !== 'USD');
+  const enDolares = delMes.filter((g) => g.moneda === 'USD');
+  $('#gasto-total').textContent = fmtARS.format(enPesos.reduce((a, g) => a + g.monto, 0));
+  const elUsd = $('#gasto-total-usd');
+  elUsd.hidden = enDolares.length === 0;
+  elUsd.textContent = '+ ' + fmtUSD.format(enDolares.reduce((a, g) => a + g.monto, 0));
   $('#gastos-mes-label').textContent = new Date().toLocaleDateString('es-AR', { month: 'long', year: 'numeric' });
 
+  // El desglose por categoría es sólo de pesos, por lo mismo.
   const porCat = {};
-  delMes.forEach((g) => { porCat[g.categoria] = (porCat[g.categoria] || 0) + g.monto; });
+  enPesos.forEach((g) => { porCat[g.categoria] = (porCat[g.categoria] || 0) + g.monto; });
   $('#gasto-cats-resumen').innerHTML = Object.entries(porCat)
     .sort((a, b) => b[1] - a[1])
     .slice(0, 3)
@@ -90,7 +103,7 @@ function render() {
           <span class="gasto-desc">${escapar(g.descripcion) || (CATEGORIAS.find((c) => c.key === g.categoria)?.label ?? 'Gasto')}</span>
           ${tk ? `<span class="gasto-tarjeta-badge">${tk.emoji} ${tk.label}</span>` : ''}
         </div>
-        <span class="gasto-monto">${fmtARS.format(g.monto)}</span>
+        <span class="gasto-monto${g.moneda === 'USD' ? ' es-usd' : ''}">${fmt(g.monto, g.moneda)}</span>
         <button class="gasto-borrar" data-id="${g.id}" aria-label="Borrar">✕</button>
       </div>`;
   }
@@ -113,6 +126,7 @@ function agregar() {
     descripcion: $('#gasto-desc').value.trim(),
     categoria: catSeleccionada,
     tarjeta: tarjetaGastoSel,
+    moneda: monedaSel,
     fecha,
     ts: Date.now(),
   });
@@ -149,6 +163,16 @@ export function initGastos() {
       tarjetaGastoSel = key;
       document.querySelectorAll('.tarjeta-chip').forEach((c) => c.classList.toggle('selected', c === chip));
     }
+  });
+
+  $('#gasto-moneda').addEventListener('click', (e) => {
+    const op = e.target.closest('.seg-op');
+    if (!op) return;
+    monedaSel = op.dataset.moneda;
+    document.querySelectorAll('#gasto-moneda .seg-op')
+      .forEach((b) => b.classList.toggle('selected', b === op));
+    // El placeholder acompaña para que se vea en qué moneda vas a cargar
+    $('#gasto-monto').placeholder = monedaSel === 'USD' ? 'US$ 0' : '$ 0';
   });
 
   // Separador de miles en vivo: 1234567 → 1.234.567 (coma para decimales)
