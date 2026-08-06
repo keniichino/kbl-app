@@ -14,6 +14,7 @@ import {
   montoEn, vigenteEn, masMontos, cero, deudaPendiente, TARJETAS_CREDITO, medioDe,
 } from './fincore.js';
 import { aPesos } from './cotizacion.js';
+import { clasificar, claseRecurrente, categoriaDe } from './catalogo.js';
 
 // USD sin cotización se cuenta como 0 en vez de como pesos: preferimos no
 // disparar una alerta antes que dispararla con un número inventado.
@@ -62,6 +63,9 @@ function conceptosNoDeclarados(ctx, ingreso) {
   const alertas = [];
 
   for (const [clave, gs] of grupos) {
+    // Si el catálogo ya lo reconoce, avisa la otra regla (y mejor: sabe el
+    // nombre real y no necesita esperar tres meses).
+    if (claseRecurrente(gs[0].descripcion)) continue;
     const meses = [...new Set(gs.map((g) => g.fecha.slice(0, 7)))].sort();
     if (meses.length < 3) continue;
     if (meses.at(-1) < addMes(MES_HOY, -1)) continue;              // ya no se cobra
@@ -114,6 +118,80 @@ function conceptosNoDeclarados(ctx, ingreso) {
     });
   }
   return alertas;
+}
+
+/**
+ * Suscripciones y servicios que el catálogo reconoce por nombre.
+ * A diferencia de la regla estadística, esta no necesita tres meses de
+ * historia: Netflix es una suscripción la primera vez que aparece.
+ */
+function conocidosNoDeclarados(ctx) {
+  const vistos = new Map();
+  for (const g of ctx.gastos) {
+    if (ctx.match.has(g.id)) continue;                 // ya declarado
+    if (diasEntre(g.fecha, hoyIso()) > 75) continue;   // viejo: puede estar dado de baja
+    const clase = claseRecurrente(g.descripcion);
+    if (!clase) continue;
+    const hit = clasificar(g.descripcion);
+    const clave = hit.nombre;
+    // Nos quedamos con el cargo más reciente de cada servicio.
+    if (!vistos.has(clave) || vistos.get(clave).g.fecha < g.fecha) vistos.set(clave, { g, hit, clase });
+  }
+
+  return [...vistos.values()].map(({ g, hit, clase }) => ({
+    id: `conocido:${hit.texto}`,
+    tipo: 'conocido-no-declarado',
+    nivel: 'media',
+    icono: clase === 'suscripcion' ? '🔁' : '🏠',
+    titulo: `${hit.nombre} es ${clase === 'suscripcion' ? 'una suscripción' : 'un gasto fijo'}`,
+    detalle: `Te lo cobraron ${fmtMoneda(g.monto, g.moneda)} el ${g.fecha.slice(8)}/${g.fecha.slice(5, 7)}${
+      hit.texto !== norm(hit.nombre) ? ` (aparece como "${g.descripcion}")` : ''
+    }. Si lo declarás, entra en tu costo fijo y el panel te avisa cuando aumente.`,
+    accion: {
+      tipo: 'crear-recurrente',
+      label: `Agregar ${hit.nombre}`,
+      datos: {
+        tipo: clase,
+        nombre: hit.nombre,
+        monto: g.monto,
+        moneda: g.moneda || 'ARS',
+        dia: Number(g.fecha.slice(8, 10)),
+        medio: g.tarjeta || null,
+        coincide: hit.texto,
+      },
+    },
+    peso: eq(g.monto, g.moneda) * 12,
+  }));
+}
+
+/**
+ * Gastos cuya categoría no coincide con la que el catálogo reconoce.
+ * Va como una sola alerta con arreglo masivo: veinte alertas de una letra
+ * cada una serían insoportables.
+ */
+function categoriasFlojas(ctx) {
+  const arreglos = [];
+  for (const g of ctx.gastos) {
+    const cat = categoriaDe(g.descripcion);
+    if (!cat || cat === g.categoria) continue;
+    // Sólo corregimos lo que quedó en el cajón de sastre: si le pusiste una
+    // categoría a propósito, no te la tocamos.
+    if (g.categoria !== 'otros') continue;
+    arreglos.push({ id: g.id, categoria: cat, desc: g.descripcion });
+  }
+  if (!arreglos.length) return [];
+
+  const ejemplos = arreglos.slice(0, 3).map((a) => a.desc).join(', ');
+  return [{
+    id: `recat:${arreglos.length}:${arreglos[0].id}`,
+    tipo: 'recategorizar',
+    nivel: 'info',
+    icono: '🏷️',
+    titulo: `Puedo acomodar ${arreglos.length} categoría${arreglos.length > 1 ? 's' : ''}`,
+    detalle: `${arreglos.length} gasto${arreglos.length > 1 ? 's están' : ' está'} en "Otros" pero sé de qué son: ${ejemplos}${arreglos.length > 3 ? '…' : ''}.`,
+    accion: { tipo: 'recategorizar', label: 'Acomodarlas', datos: { arreglos } },
+    peso: arreglos.length,
+  }];
 }
 
 /** Conceptos declarados que aumentaron respecto del mes pasado. */
@@ -408,7 +486,9 @@ export function descartar(id) {
 export function detectar(ctx, foto) {
   const ingreso = eqv(foto.ingresos);
   const todas = [
+    ...conocidosNoDeclarados(ctx),
     ...conceptosNoDeclarados(ctx, ingreso),
+    ...categoriasFlojas(ctx),
     ...aumentos(ctx),
     ...diasCaros(ctx),
     ...ritmoDelMes(ctx),

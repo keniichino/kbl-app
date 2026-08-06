@@ -247,6 +247,13 @@ export function removeGasto(id) {
   push(supabase.from('gastos').delete().eq('id', id), 'gastos delete');
 }
 
+/** Cambios puntuales sobre un gasto ya cargado (hoy: recategorizar). */
+export function updateGasto(id, cambios) {
+  const actualizado = getGastos().map((g) => (g.id === id ? { ...g, ...cambios } : g));
+  write(KEYS.gastos, actualizado);
+  push(supabase.from('gastos').update(cambios).eq('id', id), 'gastos update');
+}
+
 // --- Notas: [{ id, titulo, contenido, updated }] ---
 // Mismo modelo de sync que Gastos (ver nota de privacidad arriba).
 

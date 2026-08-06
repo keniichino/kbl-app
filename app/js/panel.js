@@ -17,7 +17,7 @@
 
 import {
   getGastos, getCuotas, getRecurrentes, upsertRecurrente, removeRecurrente,
-  getAhorros, addAhorro,
+  getAhorros, addAhorro, updateGasto,
 } from './store.js';
 import { aPesos, casaActual, siguienteCasa, onCotizacion, ahorroVsTarjeta } from './cotizacion.js';
 import { confirmar } from './dialog.js';
@@ -644,6 +644,11 @@ async function accionAlerta(hacer, id) {
   if (hacer === 'accion') {
     if (a.accion.tipo === 'ir') {
       return document.querySelector(`.tab[data-view="${a.accion.vista}"]`)?.click();
+    }
+    if (a.accion.tipo === 'recategorizar') {
+      for (const arr of a.accion.datos.arreglos) updateGasto(arr.id, { categoria: arr.categoria });
+      descartar(id);
+      return render();
     }
     if (a.accion.tipo === 'crear-recurrente') {
       const d = a.accion.datos;

@@ -2,12 +2,14 @@
 import { getGastos, addGasto, removeGasto } from './store.js';
 import { confirmar } from './dialog.js';
 import { equivalente, casaActual, siguienteCasa, onCotizacion } from './cotizacion.js';
+import { clasificar } from './catalogo.js';
 
 export const CATEGORIAS = [
   { key: 'comida',     emoji: '🍔', label: 'Comida' },
   { key: 'super',      emoji: '🛒', label: 'Súper' },
   { key: 'transporte', emoji: '🚗', label: 'Transporte' },
   { key: 'salidas',    emoji: '🎉', label: 'Salidas' },
+  { key: 'servicios',  emoji: '🔁', label: 'Servicios' },
   { key: 'casa',       emoji: '🏠', label: 'Casa' },
   { key: 'salud',      emoji: '💊', label: 'Salud' },
   { key: 'otros',      emoji: '📦', label: 'Otros' },
@@ -29,9 +31,12 @@ const fmtUSD = new Intl.NumberFormat('es-AR', {
 // Los gastos viejos no tienen moneda: son todos pesos.
 const fmt = (monto, moneda) => (moneda === 'USD' ? fmtUSD : fmtARS).format(monto);
 
-let catSeleccionada = 'comida';
+const CAT_DEFECTO = 'comida';
+let catSeleccionada = CAT_DEFECTO;
 let tarjetaGastoSel = null;
 let monedaSel = 'ARS';   // arranca en pesos; se mantiene hasta que lo cambies
+// Si tocaste un chip a mano, el catálogo no te lo pisa: vos sabés más que él.
+let catElegidaAMano = false;
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -136,6 +141,13 @@ function agregar() {
   });
   $('#gasto-monto').value = '';
   $('#gasto-desc').value = '';
+  // El próximo gasto arranca limpio: vuelve a autocategorizarse solo.
+  catElegidaAMano = false;
+  catSeleccionada = CAT_DEFECTO;
+  document.querySelectorAll('.cat-chip')
+    .forEach((c) => c.classList.toggle('selected', c.dataset.cat === CAT_DEFECTO));
+  const hint = $('#gasto-cat-hint');
+  if (hint) hint.hidden = true;
   render();
   $('#gasto-monto').focus();
 }
@@ -160,7 +172,28 @@ export function initGastos() {
     const chip = e.target.closest('.cat-chip');
     if (!chip) return;
     catSeleccionada = chip.dataset.cat;
+    catElegidaAMano = true;
+    $('#gasto-cat-hint').hidden = true;
     document.querySelectorAll('.cat-chip').forEach((c) => c.classList.toggle('selected', c === chip));
+  });
+
+  // Categoría sola a partir de la descripción: escribís "Coto" y se pone Súper.
+  // Sólo sugiere; en cuanto tocás un chip deja de meterse.
+  $('#gasto-desc').addEventListener('input', () => {
+    if (catElegidaAMano) return;
+    const hint = $('#gasto-cat-hint');
+    const hit = clasificar($('#gasto-desc').value);
+    // Sin match volvemos al default: si no, borrás "DiDi", escribís otra cosa
+    // y el chip queda pegado en Transporte.
+    const cat = hit ? hit.cat : CAT_DEFECTO;
+    catSeleccionada = cat;
+    document.querySelectorAll('.cat-chip')
+      .forEach((c) => c.classList.toggle('selected', c.dataset.cat === cat));
+    if (!hit) { hint.hidden = true; return; }
+    const info = CATEGORIAS.find((c) => c.key === cat);
+    hint.innerHTML = `✨ Lo puse en <b>${info.emoji} ${info.label}</b>${
+      hit.clase !== 'variable' ? ` · parece ${hit.clase === 'fijo' ? 'un gasto fijo' : 'una suscripción'}` : ''}`;
+    hint.hidden = false;
   });
 
   $('#gasto-tarjeta-chips').addEventListener('click', (e) => {

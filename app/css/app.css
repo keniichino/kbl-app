@@ -1587,6 +1587,16 @@ body[data-theme="dark"] .fin-edit-input { background: rgba(255,255,255,.1); colo
   font-size: .68rem; line-height: 1.5; color: var(--ink-soft); opacity: .85;
 }
 
+/* Aviso de categoría puesta sola al cargar un gasto */
+.gasto-cat-hint {
+  font-size: .74rem;
+  font-weight: 600;
+  color: var(--ink-soft);
+  margin: -2px 2px 0;
+  animation: viewIn .25s ease-out;
+}
+.gasto-cat-hint b { color: var(--ink); font-weight: 800; }
+
 /* ---- Alertas ---- */
 .fin-alerta-cuenta {
   display: inline-block;
