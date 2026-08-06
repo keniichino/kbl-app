@@ -21,90 +21,20 @@ import {
 } from './store.js';
 import { aPesos, casaActual, siguienteCasa, onCotizacion, ahorroVsTarjeta } from './cotizacion.js';
 import { confirmar } from './dialog.js';
+import { detectar, descartar } from './detecciones.js';
+import { permiso, pedirPermiso, explicacion, notificar } from './avisos.js';
+import {
+  fmtARS, fmtUSD, fmtMoneda, fmtCorto, pct, variacion, escapar,
+  MES_HOY, hoyIso, addMes, labelMes,
+  cero, sumar, masMontos, hayUsd,
+  MEDIOS, medioDe, TIPOS,
+  vigenteEn, montoEn, contexto, fotoDelMes, deudaPendiente,
+} from './fincore.js';
 
 const $ = (sel) => document.querySelector(sel);
 
-// ---------- Formato ----------
-
-const fmtARS = new Intl.NumberFormat('es-AR', {
-  style: 'currency', currency: 'ARS', minimumFractionDigits: 0, maximumFractionDigits: 0,
-});
-const fmtUSD = new Intl.NumberFormat('es-AR', {
-  style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 2,
-});
-const fmtMoneda = (m, moneda) => (moneda === 'USD' ? fmtUSD : fmtARS).format(m);
-
-// Los tiles son angostos: ahí el número va abreviado ($ 1,2 M), pero en las
-// tablas siempre va completo, que es donde uno controla contra el resumen.
-function fmtCorto(n) {
-  const abs = Math.abs(n);
-  if (abs >= 1e6) return '$ ' + (n / 1e6).toFixed(abs >= 1e7 ? 0 : 1).replace('.', ',') + ' M';
-  if (abs >= 1e4) return '$ ' + Math.round(n / 1e3) + ' k';
-  return fmtARS.format(n);
-}
-
-const pct = (n) => (n * 100).toFixed(n >= 0.1 || n <= -0.1 ? 0 : 1).replace('.', ',') + '%';
-
-/**
- * Magnitud de un cambio. Arriba de 3x el porcentaje deja de decir algo
- * ("500% por encima"), así que ahí se pasa a múltiplo: "×6,0".
- */
-function variacion(actual, previo) {
-  const p = (actual - previo) / Math.abs(previo);
-  return Math.abs(p) > 3
-    ? '×' + Math.abs(actual / previo).toFixed(1).replace('.', ',')
-    : pct(Math.abs(p));
-}
-
-function escapar(s) {
-  return (s || '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-}
-
-// ---------- Meses ----------
-
-const pad2 = (n) => String(n).padStart(2, '0');
-const mesDeFecha = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}`;
-const MES_HOY = mesDeFecha(new Date());
-// Fecha local, NO toISOString(): a la noche en Argentina el UTC ya es el día
-// siguiente y el movimiento quedaba fechado mañana.
-const hoyIso = () => {
-  const d = new Date();
-  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
-};
-
-function addMes(key, n) {
-  const [y, m] = key.split('-').map(Number);
-  return mesDeFecha(new Date(y, m - 1 + n, 1));
-}
-
-// A mano y no con toLocaleDateString: el formato largo de es-AR es
-// "agosto de 2026" y el capitalize del CSS lo deja en "Agosto De 2026".
-const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
-  'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
-const MESES_CORTOS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
-
-function labelMes(key, { corto = false } = {}) {
-  const [y, m] = key.split('-').map(Number);
-  return corto ? MESES_CORTOS[m - 1] : `${MESES[m - 1]} ${y}`;
-}
-
-function addMesesFecha(fechaIso, n) {
-  const d = new Date(fechaIso + 'T00:00:00');
-  d.setMonth(d.getMonth() + n);
-  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}`;
-}
-
-// ---------- Plata en dos monedas ----------
-
-const cero = () => ({ ars: 0, usd: 0 });
-const sumar = (acc, monto, moneda) => {
-  if (moneda === 'USD') acc.usd += monto; else acc.ars += monto;
-  return acc;
-};
-const masMontos = (...vs) => vs.reduce((a, v) => ({ ars: a.ars + v.ars, usd: a.usd + v.usd }), cero());
 /** Equivalente total en pesos. Si todavía no bajó la cotización, los USD no se suman. */
 const equiv = (v) => v.ars + (aPesos(v.usd) || 0);
-const hayUsd = (v) => v.usd > 0.005;
 /** Un monto suelto llevado a pesos, para poder ordenar filas de distinta moneda. */
 const enPesos = (monto, moneda) => (moneda === 'USD' ? (aPesos(monto) || monto) : monto);
 
@@ -130,151 +60,13 @@ let mesSel = MES_HOY;
 let abiertos = new Set();   // filas expandidas
 let editando = null;        // id del recurrente con el monto en edición
 
-// ---------- Normalización / matcheo ----------
-
-const norm = (s) => (s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
-
-// Tarjetas de crédito: sus consumos se pagan por resumen, o sea por `cuotas`.
-// En base CAJA no se cuentan como gasto del mes (si no, se duplican).
-const TARJETAS_CREDITO = new Set(['visa', 'mac', 'mp']);
-
-const MEDIOS = [
-  { key: 'visa', emoji: '💳', label: 'Visa' },
-  { key: 'mac', emoji: '⬛', label: 'Mac' },
-  { key: 'mp', emoji: '🔵', label: 'MP' },
-  { key: 'debito', emoji: '🏦', label: 'Débito' },
-  { key: 'efectivo', emoji: '💵', label: 'Efectivo' },
-];
-const medioDe = (k) => MEDIOS.find((m) => m.key === k);
-
-const TIPOS = {
-  ingreso: { label: 'Ingreso', emoji: '💰' },
-  fijo: { label: 'Gasto fijo', emoji: '🏠' },
-  suscripcion: { label: 'Suscripción', emoji: '🔁' },
-};
-
-/** Palabras que identifican al concepto dentro de la descripción de un gasto. */
-function llavesDe(r) {
-  return (r.coincide ? r.coincide.split(',') : [r.nombre])
-    .map(norm).filter((k) => k.length >= 3);
-}
-
-/**
- * Mapa gastoId → recurrenteId. Un gasto que matchea un concepto declarado ya
- * está contado por el concepto: no se vuelve a sumar como variable, y además
- * sirve para que el historial del concepto salga del gasto real y no de lo
- * declarado a mano.
- */
-function matchear(gastos, recurrentes) {
-  const conceptos = recurrentes
-    .filter((r) => r.tipo !== 'ingreso')
-    .map((r) => ({ r, llaves: llavesDe(r) }))
-    .filter((c) => c.llaves.length);
-  const mapa = new Map();
-  if (!conceptos.length) return mapa;
-  for (const g of gastos) {
-    const d = norm(g.descripcion);
-    if (!d) continue;
-    const hit = conceptos.find((c) => c.llaves.some((k) => d.includes(k)));
-    if (hit) mapa.set(g.id, hit.r.id);
-  }
-  return mapa;
-}
-
-// ---------- Recurrentes: cuánto valió cada mes ----------
-
-/** Vale para ese mes: activo desde su alta, o pausado pero con historial cargado. */
-function vigenteEn(r, mes) {
-  const h = r.historial || {};
-  if (h[mes] != null) return true;
-  if (r.estado !== 'activo') return false;
-  const alta = (r.created_at || '').slice(0, 7);
-  return !alta || mes >= alta;
-}
-
-/** Monto declarado para ese mes: el del historial, si no el último anterior, si no el vigente. */
-function montoDeclarado(r, mes) {
-  const h = r.historial || {};
-  if (h[mes] != null) return Number(h[mes]) || 0;
-  const previas = Object.keys(h).filter((k) => k < mes).sort();
-  if (previas.length) return Number(h[previas[previas.length - 1]]) || 0;
-  return Number(r.monto) || 0;
-}
-
-/** Monto efectivo del mes: si hay gastos cargados que matchean, mandan ellos. */
-function montoEn(r, mes, ctx) {
-  const reales = (ctx.gastosPorMes.get(mes) || []).filter(
-    (g) => ctx.match.get(g.id) === r.id && (g.moneda || 'ARS') === r.moneda
-  );
-  if (reales.length) return reales.reduce((a, g) => a + g.monto, 0);
-  return montoDeclarado(r, mes);
-}
-
-// ---------- Cuotas: calendario completo ----------
-
-/**
- * `fecha_primer_venc` es el vencimiento de `cuota_actual` (la próxima a pagar),
- * así que el plan entero se reconstruye hacia atrás y hacia adelante. Eso
- * permite ver la carga de deuda de meses pasados, no sólo la futura.
- */
-function calendarioCuotas(cuotas) {
-  const porMes = new Map();
-  for (const c of cuotas) {
-    if (c.estado !== 'activa') continue;
-    for (let n = 1; n <= c.cuota_total; n++) {
-      const mes = addMesesFecha(c.fecha_primer_venc, n - c.cuota_actual);
-      if (!porMes.has(mes)) porMes.set(mes, { ...cero(), items: [] });
-      const acc = porMes.get(mes);
-      sumar(acc, c.monto_cuota, c.moneda);
-      acc.items.push({ desc: c.descripcion, n, total: c.cuota_total, monto: c.monto_cuota, moneda: c.moneda, tarjeta: c.tarjeta });
-    }
-  }
-  return porMes;
-}
-
-// ---------- Foto del mes ----------
-
-function fotoDelMes(mes, ctx) {
-  const ingresos = cero(), fijos = cero(), subs = cero();
-  const varCaja = cero(), varConsumo = cero(), aportes = cero(), retiros = cero();
-  const filasFijos = [], filasSubs = [];
-
-  for (const r of ctx.recurrentes) {
-    if (!vigenteEn(r, mes)) continue;
-    const m = montoEn(r, mes, ctx);
-    if (!m) continue;
-    if (r.tipo === 'ingreso') sumar(ingresos, m, r.moneda);
-    else if (r.tipo === 'suscripcion') { sumar(subs, m, r.moneda); filasSubs.push({ r, monto: m }); }
-    else { sumar(fijos, m, r.moneda); filasFijos.push({ r, monto: m }); }
-  }
-
-  for (const g of (ctx.gastosPorMes.get(mes) || [])) {
-    if (ctx.match.has(g.id)) continue;               // ya contado como concepto
-    sumar(varConsumo, g.monto, g.moneda);
-    if (!TARJETAS_CREDITO.has(g.tarjeta)) sumar(varCaja, g.monto, g.moneda);
-  }
-
-  const cuotas = ctx.calCuotas.get(mes) || cero();
-
-  for (const a of ctx.ahorros) {
-    if (a.fecha.slice(0, 7) !== mes) continue;
-    sumar(a.tipo === 'retiro' ? retiros : aportes, a.monto, a.moneda);
-  }
-
-  const estructural = masMontos(fijos, subs);
-  const egresoCaja = masMontos(estructural, cuotas, varCaja);
-  const egresoConsumo = masMontos(estructural, varConsumo);
-  const egreso = base === 'caja' ? egresoCaja : egresoConsumo;
-  const variable = base === 'caja' ? varCaja : varConsumo;
-
-  return {
-    mes, ingresos, fijos, subs, estructural, cuotas,
-    varCaja, varConsumo, variable, egreso, egresoCaja, egresoConsumo,
-    aportes, retiros,
-    disponible: { ars: ingresos.ars - egreso.ars, usd: ingresos.usd - egreso.usd },
-    filasFijos: filasFijos.sort((a, b) => enPesos(b.monto, b.r.moneda) - enPesos(a.monto, a.r.moneda)),
-    filasSubs: filasSubs.sort((a, b) => enPesos(b.monto, b.r.moneda) - enPesos(a.monto, a.r.moneda)),
-  };
+/** Foto del mes con las filas ya ordenadas por peso, listas para pintar. */
+function foto(mes, ctx) {
+  const f = fotoDelMes(mes, ctx, base);
+  const porMonto = (a, b) => enPesos(b.monto, b.r.moneda) - enPesos(a.monto, a.r.moneda);
+  f.filasFijos.sort(porMonto);
+  f.filasSubs.sort(porMonto);
+  return f;
 }
 
 // ---------- Piezas visuales ----------
@@ -466,7 +258,7 @@ function renderKpis(fotos, ctx) {
 function renderFilas(filas, ctx, { tipo }) {
   const meses = ctx.meses;
   return filas.map(({ r, monto }) => {
-    const serie = meses.map((m) => (vigenteEn(r, m) ? montoEn(r, m, ctx) : 0));
+    const serie = meses.map((m) => (vigenteEn(r, m, ctx) ? montoEn(r, m, ctx) : 0));
     const prev = serie.at(-2) || 0;
     const abierto = abiertos.has(r.id);
     const medio = medioDe(r.medio);
@@ -577,13 +369,6 @@ function renderSubs(foto, ctx) {
             si los paga la tarjeta, ${fmtARS.format(comp.conTarjeta)} → <b class="fin-ok">ahorrás ${fmtARS.format(comp.ahorro)}</b>.` : ''}
         </div>` : ''}
     </div>`;
-}
-
-/** Saldo de deuda: todas las cuotas que quedan por pagar desde `mes` inclusive. */
-function deudaPendiente(mes, cal = calendarioCuotas(getCuotas())) {
-  const acc = cero();
-  for (const [m, v] of cal) if (m >= mes) { acc.ars += v.ars; acc.usd += v.usd; }
-  return acc;
 }
 
 function renderDeuda(ctx) {
@@ -706,7 +491,7 @@ function renderFlujo(fotos) {
 
 function renderProyeccion(ctx) {
   const meses = Array.from({ length: 6 }, (_, i) => addMes(MES_HOY, i + 1));
-  const fotos = meses.map((m) => fotoDelMes(m, ctx));
+  const fotos = meses.map((m) => foto(m, ctx));
   const hayAlgo = fotos.some((f) => equiv(f.egreso));
   if (!hayAlgo) return '';
   const tope = Math.max(...fotos.map((f) => Math.max(equiv(f.egreso), equiv(f.ingresos))), 1);
@@ -736,29 +521,126 @@ function renderProyeccion(ctx) {
     </div>`;
 }
 
+// ---------- Alertas ----------
+// La bandeja es el canal principal: no pide permisos, no depende de un
+// servidor y está donde ya estás mirando los números.
+
+let alertasActuales = new Map();
+let verTodas = false;
+
+function renderAlertas(alertas) {
+  alertasActuales = new Map(alertas.map((a) => [a.id, a]));
+
+  const estado = permiso();
+  // Si ya lo bloqueó, el botón no puede hacer nada: se muestra la explicación
+  // de cómo desbloquearlo en vez de un botón que no responde.
+  const botonAvisos = (estado === 'granted' || estado === 'denied' || estado === 'no-soportado')
+    ? ''
+    : `<button class="fin-link" data-hacer="avisos">🔔 Activar avisos</button>`;
+
+  if (!alertas.length) {
+    return `<div class="fin-card">
+      <div class="fin-card-head"><h2>Alertas</h2>${botonAvisos}</div>
+      <div class="fin-alerta-limpio">✓ Nada raro para marcarte. Reviso suscripciones repetidas,
+        aumentos, días caros, duplicados y vencimientos cada vez que abrís el panel.</div>
+    </div>`;
+  }
+
+  const visibles = verTodas ? alertas : alertas.slice(0, 4);
+  const ocultas = alertas.length - visibles.length;
+
+  return `<div class="fin-card">
+    <div class="fin-card-head">
+      <h2>Alertas <span class="fin-alerta-cuenta">${alertas.length}</span></h2>
+      ${botonAvisos}
+    </div>
+    ${visibles.map((a) => `
+      <div class="fin-alerta fin-alerta--${a.nivel}">
+        <span class="fin-alerta-icono">${a.icono}</span>
+        <div class="fin-alerta-cuerpo">
+          <div class="fin-alerta-titulo">${escapar(a.titulo)}</div>
+          <div class="fin-alerta-detalle">${a.detalle}</div>
+          <div class="fin-alerta-acciones">
+            ${a.accion ? `<button class="fin-btn fin-btn--ok" data-hacer="accion" data-alerta="${a.id}">${a.accion.label}</button>` : ''}
+            <button class="fin-btn" data-hacer="descartar" data-alerta="${a.id}">Listo, ya sé</button>
+          </div>
+        </div>
+      </div>`).join('')}
+    ${ocultas > 0 ? `<button class="fin-ver-mas" data-hacer="ver-todas">Ver ${ocultas} más</button>` : ''}
+    ${estado === 'granted' ? '' : `<div class="fin-nota">${explicacion()}</div>`}
+  </div>`;
+}
+
+/** Globo con la cantidad de alertas accionables sobre la pestaña del Panel. */
+function pintarBadge(alertas) {
+  const n = alertas.filter((a) => a.nivel !== 'info').length;
+  const tab = document.querySelector('.tab[data-view="panel"]');
+  if (!tab) return;
+  let globo = tab.querySelector('.tab-badge');
+  if (!n) { globo?.remove(); return; }
+  if (!globo) {
+    globo = document.createElement('span');
+    globo.className = 'tab-badge';
+    tab.appendChild(globo);
+  }
+  globo.textContent = n > 9 ? '9+' : String(n);
+}
+
+async function accionAlerta(hacer, id) {
+  if (hacer === 'ver-todas') { verTodas = true; return render(); }
+
+  if (hacer === 'avisos') {
+    const r = await pedirPermiso();
+    if (r === 'granted') notificar([...alertasActuales.values()]);
+    return render();
+  }
+
+  const a = alertasActuales.get(id);
+  if (!a) return;
+
+  if (hacer === 'descartar') { descartar(id); return render(); }
+
+  if (hacer === 'accion') {
+    if (a.accion.tipo === 'ir') {
+      return document.querySelector(`.tab[data-view="${a.accion.vista}"]`)?.click();
+    }
+    if (a.accion.tipo === 'crear-recurrente') {
+      const d = a.accion.datos;
+      upsertRecurrente({
+        id: crypto.randomUUID(),
+        tipo: d.tipo,
+        nombre: d.nombre,
+        categoria: '',
+        monto: d.monto,
+        moneda: d.moneda,
+        dia: d.dia ?? null,
+        medio: d.medio || null,
+        estado: 'activo',
+        // Guardamos con qué texto matchear para que los gastos ya cargados
+        // pasen a contarse como este concepto y no se dupliquen.
+        coincide: d.coincide,
+        historial: { [MES_HOY]: d.monto },
+        created_at: new Date().toISOString(),
+      });
+      descartar(id);
+      return render();
+    }
+  }
+}
+
 // ---------- Render principal ----------
 
 function render() {
-  const gastos = getGastos();
-  const cuotas = getCuotas();
-  const recurrentes = getRecurrentes();
-  const ahorros = getAhorros();
-
-  const gastosPorMes = new Map();
-  for (const g of gastos) {
-    const m = g.fecha.slice(0, 7);
-    if (!gastosPorMes.has(m)) gastosPorMes.set(m, []);
-    gastosPorMes.get(m).push(g);
-  }
+  const ctx = contexto({
+    gastos: getGastos(),
+    cuotas: getCuotas(),
+    recurrentes: getRecurrentes(),
+    ahorros: getAhorros(),
+  });
 
   const meses = Array.from({ length: 6 }, (_, i) => addMes(mesSel, i - 5));
-  const ctx = {
-    gastos, cuotas, recurrentes, ahorros, gastosPorMes, meses,
-    match: matchear(gastos, recurrentes),
-    calCuotas: calendarioCuotas(cuotas),
-  };
-
-  const fotos = meses.map((m) => fotoDelMes(m, ctx));
+  ctx.meses = meses;
+  const fotos = meses.map((m) => foto(m, ctx));
   ctx.foto = fotos.at(-1);
   ctx.previa = fotos.at(-2);
 
@@ -769,6 +651,13 @@ function render() {
     : 'Lo que consumiste este mes';
   document.querySelectorAll('#fin-base .seg-btn')
     .forEach((b) => b.classList.toggle('selected', b.dataset.base === base));
+
+  // Las alertas siempre se calculan sobre el mes corriente, aunque estés
+  // mirando uno viejo: "el resumen vence en 3 días" no depende de qué mes
+  // tengas abierto.
+  const alertas = detectar(ctx, mesSel === MES_HOY ? ctx.foto : foto(MES_HOY, ctx));
+  $('#fin-alertas').innerHTML = renderAlertas(alertas);
+  pintarBadge(alertas);
 
   $('#fin-hero').innerHTML = renderHero(ctx.foto, ctx.previa);
   $('#fin-kpis').innerHTML = renderKpis(fotos, ctx);
@@ -974,9 +863,11 @@ export function initPanel() {
     render();
   });
 
-  // Delegación: filas, atajos y cotización
+  // Delegación: alertas, filas, atajos y cotización
   $('#view-panel').addEventListener('click', (e) => {
     if (e.target.closest('.cotiz-eq')) return siguienteCasa();
+    const alerta = e.target.closest('[data-hacer]');
+    if (alerta) return accionAlerta(alerta.dataset.hacer, alerta.dataset.alerta);
     const btn = e.target.closest('[data-accion]');
     if (!btn) return;
     const { accion, id } = btn.dataset;
@@ -994,6 +885,8 @@ export function initPanel() {
   });
 
   render();
+  // Un solo intento de notificar por arranque, y sólo si ya dio permiso.
+  notificar([...alertasActuales.values()]).catch(() => {});
 }
 
 export { render as renderPanel };

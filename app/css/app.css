@@ -1575,6 +1575,58 @@ body[data-theme="dark"] .fin-edit-input { background: rgba(255,255,255,.1); colo
   font-size: .68rem; line-height: 1.5; color: var(--ink-soft); opacity: .85;
 }
 
+/* ---- Alertas ---- */
+.fin-alerta-cuenta {
+  display: inline-block;
+  min-width: 18px; padding: 0 5px;
+  border-radius: 999px; margin-left: 4px;
+  background: var(--fin-mal); color: #fff;
+  font-size: .68rem; font-weight: 800; text-align: center;
+  letter-spacing: 0;
+}
+.fin-alerta {
+  display: grid; grid-template-columns: 26px 1fr;
+  gap: 9px; padding: 11px 0;
+  border-bottom: 1px solid var(--fin-rule);
+}
+.fin-alerta:last-of-type { border-bottom: none; }
+.fin-alerta-icono { font-size: 1.15rem; line-height: 1.2; text-align: center; }
+.fin-alerta-cuerpo { min-width: 0; }
+.fin-alerta-titulo { font-size: .88rem; font-weight: 800; color: var(--ink); }
+.fin-alerta-detalle {
+  font-size: .78rem; line-height: 1.5; color: var(--ink-soft); margin-top: 2px;
+}
+.fin-alerta-detalle b { color: var(--ink); font-weight: 800; }
+.fin-alerta-acciones { display: flex; gap: 6px; margin-top: 9px; flex-wrap: wrap; }
+.fin-alerta-acciones .fin-btn { flex: 0 1 auto; min-width: 0; padding: 7px 12px; }
+
+/* Un filito de color a la izquierda marca la urgencia sin gritar */
+.fin-alerta--alta  { box-shadow: inset 3px 0 0 -1px var(--fin-mal); padding-left: 8px; }
+.fin-alerta--media { box-shadow: inset 3px 0 0 -1px var(--fin-cuota); padding-left: 8px; }
+.fin-alerta--info  { box-shadow: inset 3px 0 0 -1px var(--fin-fijo); padding-left: 8px; }
+
+.fin-alerta-limpio {
+  font-size: .8rem; line-height: 1.5; color: var(--ink-soft);
+  padding: 4px 0 2px;
+}
+.fin-ver-mas {
+  width: 100%; margin-top: 10px; padding: 8px;
+  background: none; border: 1px dashed var(--fin-borde); border-radius: 10px;
+  font: 700 .74rem var(--font); color: var(--ink-soft); cursor: pointer;
+}
+
+/* Globo de alertas sobre la pestaña Panel */
+.tab { position: relative; }
+.tab-badge {
+  position: absolute;
+  top: 6px; left: 50%; margin-left: 4px;
+  min-width: 16px; height: 16px; padding: 0 4px;
+  border-radius: 999px;
+  background: var(--fin-mal); color: #fff;
+  font-size: .6rem; font-weight: 800; line-height: 16px; text-align: center;
+  box-shadow: 0 1px 4px rgba(0,0,0,.25);
+}
+
 /* ---- 6 tabs entran justas en pantallas chicas ---- */
 .tabbar .tab { font-size: .64rem; gap: 1px; }
 .tabbar .tab-icon { font-size: 1.3rem; }

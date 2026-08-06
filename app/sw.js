@@ -1,7 +1,7 @@
 // ====== Service Worker — offline + actualizaciones al abrir ======
 // Estrategia: red-primero para HTML/CSS/JS (así cada deploy llega al abrir la
 // app), caché como respaldo offline. Cache-first solo para íconos y fuentes.
-const CACHE = 'kbl-v29';
+const CACHE = 'kbl-v30';
 const ASSETS = [
   './',
   './index.html',
@@ -16,6 +16,9 @@ const ASSETS = [
   './js/notas.js',
   './js/cuotas.js',
   './js/panel.js',
+  './js/fincore.js',
+  './js/detecciones.js',
+  './js/avisos.js',
   './js/cotizacion.js',
   './js/viewer360.js',
   './js/dialog.js',
@@ -36,6 +39,36 @@ self.addEventListener('activate', (e) => {
     )
   );
   self.clients.claim();
+});
+
+// ---------- Notificaciones ----------
+// `push` sólo se dispara si algún servidor manda el mensaje (VAPID + web-push).
+// Todavía no existe ese emisor: por ahora las notificaciones las dispara la
+// propia app al abrir (js/avisos.js). El handler queda listo para cuando esté.
+self.addEventListener('push', (e) => {
+  let datos = { titulo: 'KBL', cuerpo: '', vista: 'panel' };
+  try { datos = { ...datos, ...(e.data ? e.data.json() : {}) }; }
+  catch { datos.cuerpo = e.data ? e.data.text() : ''; }
+  e.waitUntil(self.registration.showNotification(datos.titulo, {
+    body: datos.cuerpo,
+    icon: './icons/icon-192.png',
+    badge: './icons/icon-192.png',
+    tag: datos.tag || 'kbl',
+    data: { vista: datos.vista },
+  }));
+});
+
+// Tocar la notificación: si la app ya está abierta la trae al frente en vez de
+// abrir una pestaña nueva.
+self.addEventListener('notificationclick', (e) => {
+  e.notification.close();
+  e.waitUntil((async () => {
+    const abiertas = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    for (const c of abiertas) {
+      if (c.url.includes(self.registration.scope)) return c.focus();
+    }
+    return self.clients.openWindow('./');
+  })());
 });
 
 self.addEventListener('fetch', (e) => {
