@@ -194,6 +194,48 @@ function categoriasFlojas(ctx) {
   }];
 }
 
+/**
+ * Gastos hormiga: compras chicas que sueltas no significan nada y juntas se
+ * comen medio sueldo. Ventana móvil de 30 días (no mes calendario) para que
+ * sirva el día 3 igual que el 28.
+ *
+ * Quedan afuera súper, casa y salud: son necesidades, no impulso. El punto no
+ * es que gastes poco, es que veas lo que no estás viendo.
+ */
+function hormiga(ctx, ingreso) {
+  const hoy = hoyIso();
+  const techo = ingreso ? ingreso * 0.015 : 30000;
+  const chicos = ctx.gastos.filter((g) => {
+    const d = diasEntre(g.fecha, hoy);
+    if (d < 0 || d > 30) return false;
+    if (ctx.match.has(g.id)) return false;
+    if (['super', 'casa', 'salud'].includes(g.categoria)) return false;
+    const m = eq(g.monto, g.moneda);
+    return m >= 800 && m <= techo;
+  });
+  if (chicos.length < 6) return [];
+
+  const total = chicos.reduce((a, g) => a + eq(g.monto, g.moneda), 0);
+  if (ingreso && total < ingreso * 0.02) return [];      // ruido, no vale la pena
+
+  const nombres = chicos.map((g) => clasificar(g.descripcion)?.nombre).filter(Boolean);
+  const repetido = moda(nombres);
+  const cuantos = nombres.filter((n) => n === repetido).length;
+
+  return [{
+    id: `hormiga:${MES_HOY}`,
+    tipo: 'hormiga',
+    nivel: ingreso && total > ingreso * 0.08 ? 'media' : 'info',
+    icono: '🐜',
+    titulo: `${chicos.length} compras chicas: ${fmtCorto(total)}`,
+    detalle: `En los últimos 30 días, de a ${fmtARS.format(total / chicos.length)} promedio.
+      ${repetido && cuantos > 2 ? `Lo que más se repite: ${repetido} (${cuantos} veces). ` : ''}
+      ${ingreso ? `Es ${pct(total / ingreso)} de tu ingreso; ` : ''}al año son <b>${fmtARS.format(total * 12)}</b>.`,
+    accion: { tipo: 'ir', vista: 'gastos', label: 'Ver los gastos' },
+    peso: total,
+  }];
+}
+
 /** Conceptos declarados que aumentaron respecto del mes pasado. */
 function aumentos(ctx) {
   const mesAnt = addMes(MES_HOY, -1);
@@ -492,6 +534,7 @@ export function detectar(ctx, foto) {
     ...aumentos(ctx),
     ...diasCaros(ctx),
     ...ritmoDelMes(ctx),
+    ...hormiga(ctx, ingreso),
     ...duplicados(ctx),
     ...vencimientos(ctx),
     ...faltantes(ctx),

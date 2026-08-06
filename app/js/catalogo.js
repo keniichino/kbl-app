@@ -78,14 +78,17 @@ export const COMERCIOS = [
   { m: /coto|carrefour|jumbo|disco|\bvea\b|\bdia\b|changomas|chango mas|walmart|makro|la anonima|maxiconsumo|diarco|libertad/, nombre: 'Súper', cat: 'super', clase: 'variable' },
   { m: /\bmarket\b|\bsuper\b|hipermercado|autoservicio|almacen|granja|verduleria|carniceria|fiambreria/, nombre: 'Súper', cat: 'super', clase: 'variable' },
   // Los de tu barrio, que ningún catálogo genérico va a conocer
-  { m: /kskagro|olazabal|open ?25/, nombre: 'Súper', cat: 'super', clase: 'variable' },
+  { m: /kskagro|olazabal/, nombre: 'Súper', cat: 'super', clase: 'variable' },
   { m: /\bmeli\b|mercado ?libre/, nombre: 'Mercado Libre', cat: 'otros', clase: 'variable' },
 
   // ---- Comida afuera y delivery ----
-  { m: /rappi|pedidos ?ya|uber ?eats|glovo/, nombre: 'Delivery', cat: 'comida', clase: 'variable' },
-  { m: /mc ?donald|burger king|\bbk\b|mostaza|wendy|subway|kfc/, nombre: 'Comida rápida', cat: 'comida', clase: 'variable' },
-  { m: /starbucks|\bsbux\b|havanna|the coffee|cafe|coffee|panaderia|confiteria/, nombre: 'Café', cat: 'comida', clase: 'variable' },
-  { m: /pizza|sushi|parrilla|resto|bodegon|cerveceria|green eat|empanada|heladeria|grido|freddo|helados/, nombre: 'Restaurante', cat: 'comida', clase: 'variable' },
+  // `hormiga: true` marca lo que se compra sin pensar. Individualmente no
+  // significan nada; juntos son el agujero más grande de cualquier mes.
+  { m: /open ?25|kiosco|maxikiosco|maxi ?kiosco|drugstore/, nombre: 'Kiosco', cat: 'comida', clase: 'variable', hormiga: true },
+  { m: /rappi|pedidos ?ya|uber ?eats|glovo/, nombre: 'Delivery', cat: 'comida', clase: 'variable', hormiga: true },
+  { m: /mc ?donald|burger king|\bbk\b|mostaza|wendy|subway|kfc/, nombre: 'Comida rápida', cat: 'comida', clase: 'variable', hormiga: true },
+  { m: /starbucks|\bsbux\b|havanna|the coffee|cafe|coffee|panaderia|confiteria|portanegra/, nombre: 'Café', cat: 'comida', clase: 'variable', hormiga: true },
+  { m: /pizza|sushi|parrilla|resto|bodegon|cerveceria|green eat|empanada|heladeria|grido|freddo|helados|\bmooi\b/, nombre: 'Restaurante', cat: 'comida', clase: 'variable' },
 
   // ---- Transporte ----
   { m: /\buber\b/, nombre: 'Uber', cat: 'transporte', clase: 'variable' },
@@ -116,6 +119,9 @@ export function clasificar(descripcion) {
 
 /** Categoría sugerida, o null. */
 export const categoriaDe = (descripcion) => clasificar(descripcion)?.cat ?? null;
+
+/** Compra de impulso: kiosco, café, delivery, comida rápida. */
+export const esHormiga = (descripcion) => clasificar(descripcion)?.hormiga === true;
 
 /** ¿Es algo que se repite todos los meses? 'suscripcion' | 'fijo' | null */
 export function claseRecurrente(descripcion) {
