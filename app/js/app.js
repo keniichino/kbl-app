@@ -6,6 +6,7 @@ import { initGastos, renderGastos } from './gastos.js';
 import { initViewer360 } from './viewer360.js';
 import { initNotas, renderNotas } from './notas.js';
 import { initCuotas, renderCuotas } from './cuotas.js';
+import { initPanel, renderPanel } from './panel.js';
 import { initCotizacion } from './cotizacion.js';
 import { confirmar } from './dialog.js';
 
@@ -126,6 +127,7 @@ document.querySelectorAll('.tab').forEach(tab => {
     if (tab.dataset.view === 'bosque') renderBosque();
     if (tab.dataset.view === 'gastos') renderGastos();
     if (tab.dataset.view === 'cuotas') renderCuotas();
+    if (tab.dataset.view === 'panel') renderPanel();
     if (tab.dataset.view === 'notas') renderNotas();
   });
 });
@@ -404,6 +406,11 @@ function onRemoteChange(kind) {
   if (kind === 'notas' && document.querySelector('#view-notas').classList.contains('active')) {
     renderNotas();
   }
+  // El panel se alimenta de casi todo: cualquier cambio lo desactualiza.
+  if (['gastos', 'cuotas', 'recurrentes', 'ahorros'].includes(kind) &&
+      document.querySelector('#view-panel').classList.contains('active')) {
+    renderPanel();
+  }
 }
 
 // ---------- Arranque: retomar sesión si existía ----------
@@ -421,6 +428,7 @@ async function arrancarApp() {
   initGastos();
   initNotas();
   initCuotas();
+  initPanel();
   initCotizacion(); // después de los módulos: al llegar la cotización los repinta
   initIslas();
   resetToIdle(); // render inmediato; el sync ajusta el estado si hace falta

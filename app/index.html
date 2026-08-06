@@ -193,6 +193,96 @@
       <div id="cuotas-lista"></div>
     </section>
 
+    <!-- ============ VISTA: PANEL FINANCIERO ============ -->
+    <section id="view-panel" class="view">
+      <header class="view-header panel-header">
+        <div>
+          <h1>Panel</h1>
+          <p class="view-sub" id="panel-sub"></p>
+        </div>
+        <div class="fin-mes-nav">
+          <button id="fin-mes-prev" class="fin-nav-btn" aria-label="Mes anterior">‹</button>
+          <span id="fin-mes-label" class="fin-mes-label"></span>
+          <button id="fin-mes-next" class="fin-nav-btn" aria-label="Mes siguiente">›</button>
+        </div>
+      </header>
+
+      <!-- Base de cálculo: gastos y cuotas miden cosas distintas, no se suman -->
+      <div class="fin-base-wrap">
+        <div class="viewer-species fin-base" id="fin-base" role="group" aria-label="Base de cálculo">
+          <button class="seg-btn" data-base="caja">Caja</button>
+          <button class="seg-btn" data-base="consumo">Consumo</button>
+        </div>
+        <p class="fin-base-ayuda">
+          <b>Caja</b>: lo que sale del bolsillo (fijos + suscripciones + cuotas + gastos sin tarjeta).
+          <b>Consumo</b>: lo que consumiste (fijos + suscripciones + todos los gastos, sin cuotas).
+        </p>
+      </div>
+
+      <div id="fin-hero"></div>
+      <div id="fin-kpis"></div>
+
+      <div id="fin-fijos"></div>
+      <div id="fin-subs"></div>
+
+      <details class="fin-form-wrap" id="fin-form-concepto">
+        <summary class="cuota-form-toggle">＋ Agregar concepto fijo, suscripción o ingreso</summary>
+        <div class="cuota-form-inner">
+          <div class="chips" id="fin-tipo"></div>
+          <input id="fin-nombre" type="text" placeholder="Alquiler, expensas, luz…" autocomplete="off">
+          <div class="monto-row">
+            <input id="fin-monto" type="text" inputmode="decimal" placeholder="$ 0" autocomplete="off">
+            <div class="seg-moneda" id="fin-moneda" role="group" aria-label="Moneda">
+              <button type="button" class="seg-op selected" data-moneda="ARS">$</button>
+              <button type="button" class="seg-op" data-moneda="USD">US$</button>
+            </div>
+          </div>
+          <div class="cuota-num-row">
+            <label class="cuota-num-label">Día de cobro</label>
+            <input id="fin-dia" type="number" min="1" max="31" class="cuota-num-input" placeholder="—">
+          </div>
+          <div class="cat-chips" id="fin-medio"></div>
+          <button class="btn-primary" id="btn-fin-guardar">Guardar concepto</button>
+        </div>
+      </details>
+
+      <div id="fin-deuda"></div>
+      <div id="fin-ahorro"></div>
+
+      <details class="fin-form-wrap" id="fin-form-ahorro">
+        <summary class="cuota-form-toggle">＋ Registrar movimiento de ahorro</summary>
+        <div class="cuota-form-inner">
+          <div class="viewer-species" id="ahorro-tipo" role="group" aria-label="Tipo de movimiento">
+            <button type="button" class="seg-btn selected" data-mov="aporte">Aporte</button>
+            <button type="button" class="seg-btn" data-mov="retiro">Retiro</button>
+          </div>
+          <div class="monto-row">
+            <input id="ahorro-monto" type="text" inputmode="decimal" placeholder="$ 0" autocomplete="off">
+            <div class="seg-moneda" id="ahorro-moneda" role="group" aria-label="Moneda">
+              <button type="button" class="seg-op selected" data-moneda="ARS">$</button>
+              <button type="button" class="seg-op" data-moneda="USD">US$</button>
+            </div>
+          </div>
+          <input id="ahorro-destino" type="text" placeholder="¿Dónde? (plazo fijo, dólares, caja…)" autocomplete="off">
+          <div class="cuota-num-row">
+            <label class="cuota-num-label">Fecha</label>
+            <input id="ahorro-fecha" type="date" class="cuota-fecha-input">
+          </div>
+          <div class="cuota-num-row">
+            <label class="cuota-num-label">Meta de ahorro</label>
+            <input id="fin-meta-input" type="number" min="0" max="100" class="cuota-num-input">
+            <span class="cuota-num-sep">% del ingreso</span>
+          </div>
+          <button class="btn-primary" id="btn-ahorro-guardar">Guardar movimiento</button>
+        </div>
+      </details>
+
+      <div id="fin-flujo"></div>
+      <div id="fin-proyeccion"></div>
+      <div class="fin-pie">Los números salen de lo que cargaste en Gastos, Cuotas y acá.
+        Pesos y dólares no se suman entre sí: el equivalente se calcula a la cotización que elijas.</div>
+    </section>
+
     <!-- Editor de nota (overlay a pantalla completa) -->
     <div class="nota-editor" id="nota-editor" hidden>
       <div class="editor-top">
@@ -212,6 +302,7 @@
       <button class="tab" data-view="bosque"><span class="tab-icon">🌳</span><span>Bosque</span></button>
       <button class="tab" data-view="gastos"><span class="tab-icon">💸</span><span>Gastos</span></button>
       <button class="tab" data-view="cuotas"><span class="tab-icon">💳</span><span>Cuotas</span></button>
+      <button class="tab" data-view="panel"><span class="tab-icon">📊</span><span>Panel</span></button>
       <button class="tab" data-view="notas"><span class="tab-icon">✍️</span><span>Notas</span></button>
     </nav>
   </main>

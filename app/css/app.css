@@ -1197,3 +1197,388 @@ body[data-theme="dark"] .btn-logout {
   background: rgba(255,255,255,.05);
   border-color: rgba(255,255,255,.1);
 }
+
+/* ============================================================
+   PANEL FINANCIERO
+   Tono distinto al resto de la app a propósito: acá se leen
+   números, no se planta un árbol. Superficie más opaca, reglas
+   finas, versalitas, y SIEMPRE cifras tabulares para que las
+   columnas se puedan comparar de un vistazo.
+   ============================================================ */
+
+:root {
+  --fin-fijo:   #3f6fb5;
+  --fin-sub:    #7c5cc4;
+  --fin-cuota:  #d0802f;
+  --fin-var:    #3f9b6d;
+  --fin-ahorro: #12867c;
+  --fin-ok:     #14784f;
+  --fin-mal:    #c2410c;
+  --fin-surf:   rgba(255,255,255,.72);
+  --fin-borde:  rgba(35,64,50,.10);
+  --fin-rule:   rgba(35,64,50,.08);
+}
+body[data-theme="dark"] {
+  --fin-fijo:   #60a5fa;
+  --fin-sub:    #a78bfa;
+  --fin-cuota:  #fbbf24;
+  --fin-var:    #34d399;
+  --fin-ahorro: #2dd4bf;
+  --fin-ok:     #34d399;
+  --fin-mal:    #fb923c;
+  --fin-surf:   rgba(255,255,255,.045);
+  --fin-borde:  rgba(255,255,255,.08);
+  --fin-rule:   rgba(255,255,255,.07);
+}
+
+#view-panel { padding-bottom: 8px; }
+#view-panel .fin-card, #view-panel .fin-hero,
+#view-panel .fin-tiles, #view-panel .fin-form-wrap { font-variant-numeric: tabular-nums; }
+
+.fin-ok  { color: var(--fin-ok); }
+.fin-mal { color: var(--fin-mal); }
+.fin-soft { color: var(--ink-soft); }
+
+/* ---- Header: navegación de meses ---- */
+.panel-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.fin-mes-nav {
+  display: flex; align-items: center; gap: 2px;
+  flex-shrink: 0; margin-top: 4px;
+  background: var(--fin-surf);
+  border: 1px solid var(--fin-borde);
+  border-radius: 999px;
+  padding: 3px 4px;
+}
+.fin-nav-btn {
+  width: 26px; height: 26px;
+  border: none; background: none; cursor: pointer;
+  font: 700 1.1rem var(--font); color: var(--ink-soft);
+  border-radius: 50%; line-height: 1;
+}
+.fin-nav-btn:disabled { opacity: .25; cursor: default; }
+.fin-nav-btn:not(:disabled):active { background: rgba(0,0,0,.06); }
+.fin-mes-label {
+  font-size: .78rem; font-weight: 800; color: var(--ink);
+  text-transform: capitalize; min-width: 92px; text-align: center;
+}
+
+/* ---- Base de cálculo ---- */
+.fin-base-wrap { margin-bottom: 4px; }
+.fin-base { margin: 6px 16px 0; }
+.fin-base-ayuda {
+  margin: 7px 20px 0;
+  font-size: .7rem; line-height: 1.45; color: var(--ink-soft);
+}
+.fin-base-ayuda b { color: var(--ink); font-weight: 800; }
+
+/* ---- Superficie común de las tarjetas ---- */
+.fin-hero, .fin-card, .fin-form-wrap {
+  margin: 12px 16px;
+  background: var(--fin-surf);
+  border: 1px solid var(--fin-borde);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 6px 18px rgba(35,64,50,.07);
+}
+body[data-theme="dark"] .fin-hero,
+body[data-theme="dark"] .fin-card,
+body[data-theme="dark"] .fin-form-wrap { box-shadow: none; }
+
+.fin-card { padding: 15px 16px 13px; }
+.fin-card-head {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 8px; margin-bottom: 10px;
+}
+.fin-card-head h2 {
+  font-size: .82rem; font-weight: 800; color: var(--ink);
+  text-transform: uppercase; letter-spacing: .07em;
+}
+.fin-card-sub { font-size: .72rem; color: var(--ink-soft); font-weight: 600; }
+.fin-link {
+  background: none; border: none; cursor: pointer; padding: 0;
+  font: 700 .74rem var(--font); color: var(--accent-deep);
+}
+
+/* ---- Hero: el número del mes y su composición ---- */
+.fin-hero { padding: 16px 18px 14px; }
+.fin-hero-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.fin-hero-key {
+  font-size: .68rem; font-weight: 800; color: var(--ink-soft);
+  text-transform: uppercase; letter-spacing: .09em;
+}
+.fin-hero-val { font-size: 2.15rem; font-weight: 800; letter-spacing: -.02em; line-height: 1.1; margin-top: 2px; }
+.fin-hero-usd { font-size: .9rem; font-weight: 700; color: var(--ink-soft); margin-top: 1px; }
+
+.fin-alloc {
+  display: flex; gap: 2px; height: 9px; margin: 13px 0 10px;
+  border-radius: 5px; overflow: hidden;
+  background: rgba(0,0,0,.05);
+}
+body[data-theme="dark"] .fin-alloc { background: rgba(255,255,255,.06); }
+.fin-alloc-seg { height: 100%; transition: width .45s cubic-bezier(.3,.9,.3,1); }
+.fin-alloc-libre {
+  background: repeating-linear-gradient(135deg, var(--fin-rule) 0 4px, transparent 4px 8px);
+}
+
+.fin-hero-linea {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 10px; font-size: .78rem; font-weight: 600; color: var(--ink-soft);
+  padding-bottom: 10px; border-bottom: 1px solid var(--fin-rule);
+}
+.fin-hero-linea b { font-weight: 800; }
+
+.fin-cta {
+  display: block; width: 100%; text-align: left;
+  background: none; border: none; cursor: pointer; padding: 0 0 10px;
+  font: 700 .78rem var(--font); color: var(--accent-deep);
+  border-bottom: 1px solid var(--fin-rule);
+}
+
+.fin-desglose { padding-top: 4px; }
+.fin-desg {
+  display: grid; grid-template-columns: 9px 1fr auto auto;
+  align-items: center; gap: 8px; padding: 5px 0;
+}
+.fin-desg-punto { width: 9px; height: 9px; border-radius: 3px; }
+.fin-desg-label { font-size: .82rem; color: var(--ink); font-weight: 600; }
+.fin-desg-pct { font-size: .74rem; color: var(--ink-soft); font-weight: 700; min-width: 34px; text-align: right; }
+.fin-desg-monto { font-size: .84rem; font-weight: 700; min-width: 92px; text-align: right; }
+.fin-usd { font-size: .78em; font-weight: 700; color: var(--ink-soft); white-space: nowrap; }
+.fin-vacio-inline { font-size: .8rem; color: var(--ink-soft); padding: 6px 0; }
+
+/* ---- Tiles ---- */
+.fin-tiles {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+  margin: 0 16px;
+}
+.fin-tile {
+  position: relative; overflow: hidden;
+  background: var(--fin-surf);
+  border: 1px solid var(--fin-borde);
+  border-radius: 16px;
+  padding: 11px 12px 0;
+  min-height: 104px;
+  display: flex; flex-direction: column;
+}
+.fin-tile-borde { position: absolute; left: 0; top: 0; bottom: 0; width: 3px; opacity: .85; }
+.fin-tile-label {
+  font-size: .66rem; font-weight: 800; color: var(--ink-soft);
+  text-transform: uppercase; letter-spacing: .08em;
+}
+.fin-tile-val { font-size: 1.32rem; font-weight: 800; letter-spacing: -.01em; margin-top: 2px; }
+.fin-tile-sub { font-size: .68rem; color: var(--ink-soft); font-weight: 600; margin-top: 1px; display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+.fin-tile-nota { font-weight: 600; }
+.fin-tile-spark { margin: auto -12px -1px; height: 30px; }
+.spark { display: block; width: 100%; height: 30px; }
+.spark-vacio { display: block; height: 30px; }
+
+/* ---- Chips de variación ---- */
+.fin-delta {
+  display: inline-flex; align-items: center; gap: 2px;
+  font-size: .68rem; font-weight: 800; letter-spacing: .01em;
+  padding: 2px 6px; border-radius: 999px; white-space: nowrap;
+}
+.fin-delta--chico { font-size: .62rem; padding: 1px 5px; }
+.fin-delta--malo  { color: var(--fin-mal); background: color-mix(in srgb, var(--fin-mal) 12%, transparent); }
+.fin-delta--bien  { color: var(--fin-ok);  background: color-mix(in srgb, var(--fin-ok) 12%, transparent); }
+.fin-delta--igual { color: var(--ink-soft); background: var(--fin-rule); }
+.fin-delta--nuevo { color: var(--ink-soft); background: var(--fin-rule); font-weight: 700; }
+
+/* ---- Filas de conceptos ---- */
+.fin-fila { border-bottom: 1px solid var(--fin-rule); }
+.fin-fila:last-of-type { border-bottom: none; }
+.fin-fila-top {
+  width: 100%; display: grid;
+  grid-template-columns: 1fr 42px auto auto;
+  align-items: center; gap: 8px;
+  background: none; border: none; cursor: pointer;
+  padding: 9px 0 2px; text-align: left; font-family: var(--font);
+  color: var(--ink);
+}
+.fin-fila-nombre {
+  font-size: .88rem; font-weight: 700; color: var(--ink);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  display: flex; align-items: center; gap: 5px;
+}
+.fin-fila-spark { height: 22px; opacity: .9; }
+.fin-fila-spark .spark { height: 22px; }
+.fin-fila-monto { font-size: .88rem; font-weight: 800; text-align: right; white-space: nowrap; }
+.fin-fila-delta { min-width: 42px; text-align: right; }
+.fin-fila-meta {
+  display: flex; gap: 10px; padding: 0 0 9px;
+  font-size: .68rem; color: var(--ink-soft); font-weight: 600;
+}
+.fin-fila-meta:empty { padding: 0 0 6px; }
+.fin-fila--abierta { background: var(--fin-rule); border-radius: 12px; padding: 0 10px; margin: 0 -10px; }
+
+.fin-badge {
+  font-size: .58rem; font-weight: 800; letter-spacing: .06em;
+  text-transform: uppercase; padding: 1px 5px; border-radius: 5px;
+  background: var(--fin-rule); color: var(--ink-soft);
+}
+.fin-badge--usd { color: var(--fin-ahorro); background: color-mix(in srgb, var(--fin-ahorro) 14%, transparent); }
+.fin-badge--pausa { color: var(--fin-cuota); background: color-mix(in srgb, var(--fin-cuota) 14%, transparent); }
+
+.fin-fila-detalle { padding: 2px 0 12px; }
+.fin-hist { display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; margin-bottom: 10px; }
+.fin-hist-col {
+  text-align: center; padding: 6px 2px; border-radius: 8px;
+  background: rgba(0,0,0,.03);
+}
+body[data-theme="dark"] .fin-hist-col { background: rgba(255,255,255,.04); }
+.fin-hist-col--sel { background: color-mix(in srgb, var(--fin-fijo) 16%, transparent); }
+.fin-hist-monto { font-size: .68rem; font-weight: 800; color: var(--ink); }
+.fin-hist-mes { font-size: .6rem; color: var(--ink-soft); text-transform: uppercase; letter-spacing: .04em; }
+
+.fin-acciones, .fin-edit { display: flex; gap: 6px; flex-wrap: wrap; }
+.fin-btn {
+  flex: 1; min-width: 92px;
+  font: 700 .74rem var(--font); color: var(--ink-soft);
+  background: rgba(255,255,255,.6);
+  border: 1px solid var(--fin-borde);
+  border-radius: 10px; padding: 8px 6px; cursor: pointer;
+}
+body[data-theme="dark"] .fin-btn { background: rgba(255,255,255,.06); }
+.fin-btn:active { transform: scale(.97); }
+.fin-btn--del { color: var(--fin-mal); }
+.fin-btn--ok { color: #fff; background: var(--fin-fijo); border-color: transparent; }
+.fin-edit-input {
+  flex: 2; min-width: 110px;
+  padding: 8px 12px; border-radius: 10px;
+  border: 1.5px solid var(--fin-fijo);
+  background: #fff; color: #234032;
+  font: 700 .95rem var(--font); outline: none;
+}
+body[data-theme="dark"] .fin-edit-input { background: rgba(255,255,255,.1); color: var(--ink); }
+
+/* ---- Totales y notas ---- */
+.fin-total {
+  display: grid; grid-template-columns: 1fr auto auto;
+  align-items: center; gap: 10px;
+  margin-top: 10px; padding-top: 10px;
+  border-top: 1.5px solid var(--fin-borde);
+}
+.fin-total-label {
+  font-size: .72rem; font-weight: 800; color: var(--ink);
+  text-transform: uppercase; letter-spacing: .07em;
+}
+.fin-total-monto { font-size: 1.02rem; font-weight: 800; }
+.fin-nota {
+  margin-top: 9px; font-size: .74rem; line-height: 1.5; color: var(--ink-soft);
+}
+.fin-nota b { color: var(--ink); font-weight: 800; }
+.fin-nota b.fin-ok { color: var(--fin-ok); }
+.fin-nota b.fin-mal { color: var(--fin-mal); }
+
+.fin-vacio { padding: 14px 2px 8px; }
+.fin-vacio p { font-size: .86rem; font-weight: 700; color: var(--ink); }
+.fin-vacio-sub { font-size: .76rem !important; font-weight: 500 !important; color: var(--ink-soft) !important; margin-top: 4px; line-height: 1.5; }
+
+/* ---- Duo (dos cifras grandes lado a lado) ---- */
+.fin-duo { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+.fin-duo-key {
+  font-size: .66rem; font-weight: 800; color: var(--ink-soft);
+  text-transform: uppercase; letter-spacing: .08em;
+}
+.fin-duo-val { font-size: 1.12rem; font-weight: 800; line-height: 1.25; }
+.fin-duo-nota { display: block; font-size: .68rem; font-weight: 600; color: var(--ink-soft); }
+
+/* ---- Barras apiladas (flujo) ---- */
+.fin-barras { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; height: 148px; }
+.fin-col { display: flex; flex-direction: column; min-width: 0; }
+.fin-col-plot { position: relative; flex: 1; display: flex; align-items: flex-end; }
+.fin-col-stack {
+  width: 100%; display: flex; flex-direction: column-reverse;
+  border-radius: 5px 5px 2px 2px; overflow: hidden;
+  min-height: 2px; transition: height .45s cubic-bezier(.3,.9,.3,1);
+}
+.fin-seg { width: 100%; }
+.fin-marca-ing {
+  position: absolute; left: -1px; right: -1px; height: 0;
+  border-top: 2px dashed var(--ink-soft); opacity: .55;
+}
+.fin-col-mes {
+  font-size: .62rem; font-weight: 700; color: var(--ink-soft);
+  text-transform: uppercase; letter-spacing: .04em; text-align: center; margin-top: 5px;
+}
+.fin-col-monto { font-size: .6rem; color: var(--ink-soft); text-align: center; opacity: .8; }
+.fin-col--hoy .fin-col-mes { color: var(--ink); }
+
+.fin-leyenda { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; }
+.fin-leyenda-item {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: .68rem; font-weight: 600; color: var(--ink-soft);
+}
+.fin-leyenda-item i { width: 9px; height: 9px; border-radius: 3px; display: inline-block; }
+.fin-leyenda-linea { border-top: 2px dashed var(--ink-soft); height: 0 !important; width: 12px !important; border-radius: 0 !important; opacity: .6; }
+
+/* ---- Mini barras (deuda) ---- */
+.fin-mini-barras { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 5px; height: 78px; }
+.fin-mini-col { display: flex; flex-direction: column; min-width: 0; }
+.fin-mini-plot { flex: 1; display: flex; align-items: flex-end; }
+.fin-mini-bar {
+  width: 100%; background: var(--fin-cuota); opacity: .55;
+  border-radius: 4px 4px 2px 2px; min-height: 2px;
+  transition: height .45s cubic-bezier(.3,.9,.3,1);
+}
+.fin-mini-bar--pico { opacity: 1; }
+.fin-mini-mes {
+  font-size: .58rem; font-weight: 700; color: var(--ink-soft);
+  text-transform: uppercase; text-align: center; margin-top: 4px;
+}
+
+/* ---- Proyección ---- */
+.fin-proy-fila {
+  display: grid; grid-template-columns: 78px 1fr 62px 62px;
+  align-items: center; gap: 8px; padding: 5px 0;
+  border-bottom: 1px solid var(--fin-rule);
+}
+.fin-proy-fila:last-child { border-bottom: none; }
+.fin-proy-mes { font-size: .74rem; color: var(--ink-soft); text-transform: capitalize; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fin-proy-barra { height: 6px; background: var(--fin-rule); border-radius: 3px; overflow: hidden; }
+.fin-proy-barra i { display: block; height: 100%; background: var(--fin-fijo); border-radius: 3px; opacity: .75; }
+.fin-proy-monto { font-size: .76rem; font-weight: 700; text-align: right; }
+.fin-proy-margen { font-size: .74rem; font-weight: 800; text-align: right; }
+
+/* ---- Meta de ahorro ---- */
+.fin-meta { margin-bottom: 12px; }
+.fin-meta-head {
+  display: flex; justify-content: space-between; gap: 8px;
+  font-size: .74rem; color: var(--ink-soft); font-weight: 600; margin-bottom: 6px;
+}
+.fin-meta-head b { color: var(--ink); font-weight: 800; }
+.fin-meta-barra { height: 7px; background: var(--fin-rule); border-radius: 4px; overflow: hidden; }
+.fin-meta-fill {
+  height: 100%; border-radius: 4px;
+  background: linear-gradient(90deg, var(--fin-ahorro), var(--fin-var));
+  transition: width .45s cubic-bezier(.3,.9,.3,1);
+}
+
+/* ---- Movimientos de ahorro ---- */
+.fin-mov {
+  display: grid; grid-template-columns: 20px 1fr auto;
+  align-items: center; gap: 8px; padding: 7px 0;
+  border-bottom: 1px solid var(--fin-rule);
+}
+.fin-mov:last-child { border-bottom: none; }
+.fin-mov-icon { font-size: .9rem; color: var(--ink-soft); text-align: center; }
+.fin-mov-desc { font-size: .82rem; font-weight: 600; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fin-mov-fecha { font-size: .68rem; color: var(--ink-soft); font-weight: 600; margin-left: 6px; }
+.fin-mov-monto { font-size: .84rem; font-weight: 800; }
+
+/* ---- Formularios del panel ---- */
+.fin-form-wrap { overflow: hidden; padding: 0; }
+.fin-form-wrap .cuota-form-inner { padding-top: 4px; }
+.fin-form-wrap .chips { flex-wrap: wrap; }
+.fin-form-wrap .chip { font-size: .82rem; padding: 8px 4px; }
+.fin-pie {
+  margin: 4px 22px 18px;
+  font-size: .68rem; line-height: 1.5; color: var(--ink-soft); opacity: .85;
+}
+
+/* ---- 6 tabs entran justas en pantallas chicas ---- */
+.tabbar .tab { font-size: .64rem; gap: 1px; }
+.tabbar .tab-icon { font-size: 1.3rem; }
+@media (max-width: 360px) {
+  .tabbar .tab { font-size: .58rem; }
+  .tabbar .tab-icon { font-size: 1.15rem; }
+}

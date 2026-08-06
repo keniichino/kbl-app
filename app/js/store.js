@@ -12,6 +12,8 @@ const KEYS = {
   gastos: 'kbl.gastos',
   notas: 'kbl.notas',
   cuotas: 'kbl.cuotas',
+  recurrentes: 'kbl.recurrentes',
+  ahorros: 'kbl.ahorros',
   uid: 'kbl.uid', // dueño de los datos locales actuales (para detectar cambio de cuenta)
 };
 
@@ -21,7 +23,8 @@ let currentUid = null; // user autenticado; el server igual valida vía RLS
 // Borra todos los datos locales (al cerrar sesión o al entrar con otra cuenta
 // en el mismo dispositivo, para no mezclar datos de dos usuarios).
 export function clearLocalData() {
-  [KEYS.sessions, KEYS.active, KEYS.gastos, KEYS.notas, KEYS.cuotas].forEach(
+  [KEYS.sessions, KEYS.active, KEYS.gastos, KEYS.notas, KEYS.cuotas,
+   KEYS.recurrentes, KEYS.ahorros].forEach(
     (k) => localStorage.removeItem(k)
   );
 }
@@ -142,9 +145,11 @@ export async function initSync(onRemoteChange) {
       supabase.from('gastos').select('*'),
       supabase.from('notas').select('*'),
       supabase.from('cuotas').select('*'),
+      supabase.from('recurrentes').select('*'),
+      supabase.from('ahorros').select('*'),
     ]);
     const timeout = new Promise((_, rej) => setTimeout(rej, 3500, 'timeout'));
-    const [sess, act, gastosR, notasR, cuotasR] = await Promise.race([pull, timeout]);
+    const [sess, act, gastosR, notasR, cuotasR, recuR, ahoR] = await Promise.race([pull, timeout]);
     if (sess.data) write(KEYS.sessions, sess.data.map(fromRemote));
     if (!act.error) {
       const local = getActive();
@@ -157,6 +162,10 @@ export async function initSync(onRemoteChange) {
     if (notasR.data) mergeListPull('notas', KEYS.notas, notasR.data, fromRemoteNota, toRemoteNota,
       (local, remote) => local.updated > Date.parse(remote.updated_at));
     if (cuotasR.data) mergeListPull('cuotas', KEYS.cuotas, cuotasR.data, fromRemoteCuota, toRemoteCuota);
+    // Recurrentes se editan (subís el monto del alquiler): last-write-wins por `updated`.
+    if (recuR.data) mergeListPull('recurrentes', KEYS.recurrentes, recuR.data, fromRemoteRecurrente, toRemoteRecurrente,
+      (local, remote) => local.updated > Date.parse(remote.updated_at));
+    if (ahoR.data) mergeListPull('ahorros', KEYS.ahorros, ahoR.data, fromRemoteAhorro, toRemoteAhorro);
   } catch (err) {
     // Offline o timeout es esperable y la app sigue andando con lo local; lo
     // logueamos igual para poder distinguirlo de un error real del servidor.
@@ -192,6 +201,8 @@ export async function initSync(onRemoteChange) {
   suscribirLista('gastos', KEYS.gastos, fromRemoteGasto, 'gastos');
   suscribirLista('notas', KEYS.notas, fromRemoteNota, 'notas');
   suscribirLista('cuotas', KEYS.cuotas, fromRemoteCuota, 'cuotas');
+  suscribirLista('recurrentes', KEYS.recurrentes, fromRemoteRecurrente, 'recurrentes');
+  suscribirLista('ahorros', KEYS.ahorros, fromRemoteAhorro, 'ahorros');
 }
 
 // --- Gastos: [{ id, monto, descripcion, categoria, fecha, ts }] ---
@@ -367,6 +378,102 @@ export function updateCuotaEstado(id, estado) {
   const all = getCuotas().map((c) => c.id === id ? { ...c, estado } : c);
   write(KEYS.cuotas, all);
   push(supabase.from('cuotas').update({ estado }).eq('id', id), 'cuotas update estado');
+}
+
+// --- Recurrentes: ingresos, gastos fijos y suscripciones ---
+// Un renglón por concepto que se repite todos los meses. `historial` guarda
+// cuánto valió cada mes ({"2026-07": 480000}), que es lo que después permite
+// ver qué subió y qué bajó sin depender de la memoria.
+
+const toRemoteRecurrente = (r) => ({
+  id: r.id,
+  tipo: r.tipo,
+  nombre: r.nombre,
+  categoria: r.categoria || null,
+  monto: r.monto,
+  moneda: r.moneda || 'ARS',
+  dia: r.dia ?? null,
+  medio: r.medio || null,
+  estado: r.estado || 'activo',
+  coincide: r.coincide || null,
+  historial: r.historial || {},
+  created_at: r.created_at,
+  updated_at: new Date(r.updated).toISOString(),
+});
+const fromRemoteRecurrente = (r) => ({
+  id: r.id,
+  tipo: r.tipo,
+  nombre: r.nombre,
+  categoria: r.categoria || '',
+  monto: Number(r.monto),
+  moneda: r.moneda || 'ARS',
+  dia: r.dia ?? null,
+  medio: r.medio || '',
+  estado: r.estado || 'activo',
+  coincide: r.coincide || '',
+  historial: r.historial || {},
+  created_at: r.created_at,
+  updated: Date.parse(r.updated_at),
+});
+
+export function getRecurrentes() {
+  return read(KEYS.recurrentes, []);
+}
+
+export function upsertRecurrente(rec) {
+  const item = { ...rec, updated: Date.now() };
+  const all = getRecurrentes().filter((r) => r.id !== item.id);
+  all.push(item);
+  write(KEYS.recurrentes, all);
+  push(supabase.from('recurrentes').upsert(toRemoteRecurrente(item), { onConflict: 'id' }), 'recurrentes upsert');
+  return item;
+}
+
+export function removeRecurrente(id) {
+  write(KEYS.recurrentes, getRecurrentes().filter((r) => r.id !== id));
+  push(supabase.from('recurrentes').delete().eq('id', id), 'recurrentes delete');
+}
+
+// --- Ahorros: movimientos (aportes y retiros), no saldo ---
+// El stock se calcula sumando; así queda el rastro de cuándo pusiste plata y
+// cuándo tuviste que sacarla.
+
+const toRemoteAhorro = (a) => ({
+  id: a.id,
+  fecha: a.fecha,
+  monto: a.monto,
+  moneda: a.moneda || 'ARS',
+  tipo: a.tipo || 'aporte',
+  destino: a.destino || null,
+  nota: a.nota || null,
+  created_at: new Date(a.ts).toISOString(),
+});
+const fromRemoteAhorro = (r) => ({
+  id: r.id,
+  fecha: r.fecha,
+  monto: Number(r.monto),
+  moneda: r.moneda || 'ARS',
+  tipo: r.tipo || 'aporte',
+  destino: r.destino || '',
+  nota: r.nota || '',
+  ts: Date.parse(r.created_at),
+});
+
+export function getAhorros() {
+  return read(KEYS.ahorros, []);
+}
+
+export function addAhorro(mov) {
+  const all = getAhorros();
+  all.push(mov);
+  write(KEYS.ahorros, all);
+  push(supabase.from('ahorros').upsert(toRemoteAhorro(mov), { onConflict: 'id' }), 'ahorros upsert');
+  return mov;
+}
+
+export function removeAhorro(id) {
+  write(KEYS.ahorros, getAhorros().filter((a) => a.id !== id));
+  push(supabase.from('ahorros').delete().eq('id', id), 'ahorros delete');
 }
 
 // --- Estadísticas derivadas ---
