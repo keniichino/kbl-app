@@ -35,6 +35,12 @@ const moda = (xs) => {
 
 const NIVELES = { alta: 0, media: 1, info: 2 };
 
+// Para nombrar un gasto que se cargó sin descripción.
+const CATEGORIAS = {
+  comida: 'Comida', super: 'Súper', transporte: 'Transporte', salidas: 'Salidas',
+  casa: 'Casa', salud: 'Salud', otros: 'Un gasto',
+};
+
 // ---------- Reglas ----------
 
 /**
@@ -165,6 +171,7 @@ function diasCaros(ctx) {
     .slice(0, 2)
     .map(([fecha, d]) => {
       const mayor = d.gastos.sort((a, b) => eq(b.monto, b.moneda) - eq(a.monto, a.moneda))[0];
+      const queEs = mayor.descripcion || CATEGORIAS[mayor.categoria] || 'Un gasto';
       const solo = d.n === 1;
       return {
         id: `diacaro:${fecha}`,
@@ -173,8 +180,8 @@ function diasCaros(ctx) {
         icono: solo ? '💥' : '🔥',
         titulo: solo ? `Gasto grande ${labelDia(fecha)}` : `Día caro: ${labelDia(fecha)}`,
         detalle: solo
-          ? `<b>${mayor.descripcion || 'Sin detalle'}</b> por ${fmtARS.format(d.total)}, cuando un día normal tuyo son ${fmtARS.format(base)}.`
-          : `${d.n} movimientos por <b>${fmtARS.format(d.total)}</b>, contra ${fmtARS.format(base)} de un día normal tuyo. Lo más grande: ${mayor.descripcion || 'sin detalle'}.`,
+          ? `<b>${queEs}</b> por ${fmtARS.format(d.total)}, cuando un día normal tuyo son ${fmtARS.format(base)}.`
+          : `${d.n} movimientos por <b>${fmtARS.format(d.total)}</b>, contra ${fmtARS.format(base)} de un día normal tuyo. Lo más grande: ${queEs.toLowerCase()}.`,
         accion: { tipo: 'ir', vista: 'gastos', label: 'Ver los gastos' },
         peso: d.total,
       };

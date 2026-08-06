@@ -181,28 +181,67 @@ function renderHero(foto, previa) {
       <span class="fin-desg-monto">${plata(foto[s.key])}</span>
     </div>`).join('');
 
-  const lineaIngreso = ing
-    ? `<div class="fin-hero-linea">
-         <span>Ingreso ${plata(foto.ingresos)}</span>
-         <span class="${disp >= 0 ? 'fin-ok' : 'fin-mal'}">
-           ${disp >= 0 ? 'Queda' : 'Faltan'} <b>${fmtARS.format(Math.abs(disp))}</b>
-           ${ing ? `· ${pct(Math.abs(disp) / ing)}` : ''}
-         </span>
+  // Entra a la izquierda, sale a la derecha. Antes el hero mostraba un solo
+  // numero gigante (lo que sale) y el ingreso en letra chica abajo: al cargar
+  // un sueldo parecia que se habia sumado a los gastos.
+  const columnaEntra = ing
+    ? `<div class="fin-hero-lado">
+         <span class="fin-hero-key">Entra</span>
+         <div class="fin-hero-val fin-hero-val--entra">${fmtARS.format(foto.ingresos.ars)}</div>
+         ${hayUsd(foto.ingresos) ? `<div class="fin-hero-usd">+ ${fmtUSD.format(foto.ingresos.usd)}</div>` : ''}
        </div>`
-    : `<button class="fin-cta" id="fin-cta-ingreso">Cargá tu ingreso mensual para ver cuánto te queda →</button>`;
+    : `<div class="fin-hero-lado">
+         <span class="fin-hero-key">Entra</span>
+         <button class="fin-cta" id="fin-cta-ingreso">Cargá tu ingreso →</button>
+       </div>`;
 
   return `
     <div class="fin-hero">
-      <div class="fin-hero-top">
-        <span class="fin-hero-key">${base === 'caja' ? 'Sale este mes' : 'Consumido este mes'}</span>
-        ${delta(total, previa ? equiv(previa.egreso) : 0)}
+      <div class="fin-hero-duo">
+        ${columnaEntra}
+        <div class="fin-hero-lado fin-hero-lado--sale">
+          <span class="fin-hero-key">${base === 'caja' ? 'Sale' : 'Consumís'} ${delta(total, previa ? equiv(previa.egreso) : 0)}</span>
+          <div class="fin-hero-val">${fmtARS.format(foto.egreso.ars)}</div>
+          ${hayUsd(foto.egreso) ? `<div class="fin-hero-usd">+ ${fmtUSD.format(foto.egreso.usd)}
+            <span class="cotiz-eq" role="button" tabindex="0" title="Tocá para cambiar de cotización">≈ ${fmtARS.format(aPesos(foto.egreso.usd) || 0)} <span class="cotiz-casa">${casaActual().label}</span></span></div>` : ''}
+        </div>
       </div>
-      <div class="fin-hero-val">${fmtARS.format(foto.egreso.ars)}</div>
-      ${hayUsd(foto.egreso) ? `<div class="fin-hero-usd">+ ${fmtUSD.format(foto.egreso.usd)}
-        <span class="cotiz-eq" role="button" tabindex="0" title="Tocá para cambiar de cotización">≈ ${fmtARS.format(aPesos(foto.egreso.usd) || 0)} <span class="cotiz-casa">${casaActual().label}</span></span></div>` : ''}
       <div class="fin-alloc">${segmentos}${libre}</div>
-      ${lineaIngreso}
+      ${ing ? `<div class="fin-hero-linea">
+         <span>De cada peso que entra se va ${pct(Math.min(total / ing, 1))}</span>
+         <span class="${disp >= 0 ? 'fin-ok' : 'fin-mal'}">
+           ${disp >= 0 ? 'Te queda' : 'Te faltan'} <b>${fmtARS.format(Math.abs(disp))}</b>
+         </span>
+       </div>` : ''}
       <div class="fin-desglose">${desglose || '<div class="fin-vacio-inline">Sin movimientos en este mes.</div>'}</div>
+    </div>`;
+}
+
+/** Los ingresos tienen su propia sección: si no, cargás uno y no lo ves. */
+function renderIngresos(foto, ctx) {
+  const filas = foto.filasIngresos;
+  if (!filas.length) {
+    return `<div class="fin-card">
+      <div class="fin-card-head"><h2>Ingresos</h2></div>
+      <div class="fin-vacio">
+        <p>No cargaste ningún ingreso.</p>
+        <p class="fin-vacio-sub">Sin esto el panel te dice cuánto gastás, pero no si te alcanza. Sueldo, freelance, un alquiler que cobrés.</p>
+      </div>
+    </div>`;
+  }
+  return `
+    <div class="fin-card">
+      <div class="fin-card-head">
+        <h2>Ingresos</h2>
+        <span class="fin-card-sub">${filas.length} fuente${filas.length !== 1 ? 's' : ''}</span>
+      </div>
+      ${renderFilas(filas, ctx, { tipo: 'ingreso' })}
+      ${filas.length > 1 ? `
+        <div class="fin-total">
+          <span class="fin-total-label">Total</span>
+          <span class="fin-total-delta">${delta(equiv(foto.ingresos), ctx.previa ? equiv(ctx.previa.ingresos) : 0, { bueno: 'suba' })}</span>
+          <span class="fin-total-monto fin-ok">${plata(foto.ingresos)}</span>
+        </div>` : ''}
     </div>`;
 }
 
@@ -254,15 +293,17 @@ function renderKpis(fotos, ctx) {
   </div>`;
 }
 
-/** Filas de conceptos (fijos o suscripciones) con su historial desplegable. */
+/** Filas de conceptos (ingresos, fijos o suscripciones) con su historial. */
 function renderFilas(filas, ctx, { tipo }) {
   const meses = ctx.meses;
+  const esIngreso = tipo === 'ingreso';
   return filas.map(({ r, monto }) => {
     const serie = meses.map((m) => (vigenteEn(r, m, ctx) ? montoEn(r, m, ctx) : 0));
     const prev = serie.at(-2) || 0;
     const abierto = abiertos.has(r.id);
     const medio = medioDe(r.medio);
-    const color = tipo === 'suscripcion' ? 'var(--fin-sub)' : 'var(--fin-fijo)';
+    const color = esIngreso ? 'var(--fin-ok)'
+      : tipo === 'suscripcion' ? 'var(--fin-sub)' : 'var(--fin-fijo)';
     const enEdicion = editando === r.id;
 
     return `
@@ -274,11 +315,11 @@ function renderFilas(filas, ctx, { tipo }) {
             ${r.moneda === 'USD' ? '<span class="fin-badge fin-badge--usd">USD</span>' : ''}
           </span>
           <span class="fin-fila-spark">${sparkline(serie, color)}</span>
-          <span class="fin-fila-monto">${fmtMoneda(monto, r.moneda)}</span>
-          <span class="fin-fila-delta">${delta(monto, prev, { chico: true })}</span>
+          <span class="fin-fila-monto${esIngreso ? ' fin-ok' : ''}">${esIngreso ? '+ ' : ''}${fmtMoneda(monto, r.moneda)}</span>
+          <span class="fin-fila-delta">${delta(monto, prev, { chico: true, bueno: esIngreso ? 'suba' : 'baja' })}</span>
         </button>
         <div class="fin-fila-meta">
-          ${r.dia ? `<span>día ${r.dia}</span>` : ''}
+          ${r.dia ? `<span>${esIngreso ? 'cobrás el' : 'día'} ${r.dia}</span>` : ''}
           ${medio ? `<span>${medio.emoji} ${medio.label}</span>` : ''}
           ${r.moneda === 'USD' && aPesos(monto) ? `<span>≈ ${fmtARS.format(aPesos(monto))}</span>` : ''}
         </div>
@@ -646,9 +687,7 @@ function render() {
 
   $('#fin-mes-label').textContent = labelMes(mesSel);
   $('#fin-mes-next').disabled = mesSel >= MES_HOY;
-  $('#panel-sub').textContent = base === 'caja'
-    ? 'Lo que sale del bolsillo este mes'
-    : 'Lo que consumiste este mes';
+  $('#panel-sub').textContent = 'Qué entra, qué sale y qué queda';
   document.querySelectorAll('#fin-base .seg-btn')
     .forEach((b) => b.classList.toggle('selected', b.dataset.base === base));
 
@@ -661,6 +700,7 @@ function render() {
 
   $('#fin-hero').innerHTML = renderHero(ctx.foto, ctx.previa);
   $('#fin-kpis').innerHTML = renderKpis(fotos, ctx);
+  $('#fin-ingresos').innerHTML = renderIngresos(ctx.foto, ctx);
   $('#fin-fijos').innerHTML = renderFijos(ctx.foto, ctx);
   $('#fin-subs').innerHTML = renderSubs(ctx.foto, ctx);
   $('#fin-deuda').innerHTML = renderDeuda(ctx);

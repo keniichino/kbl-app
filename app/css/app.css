@@ -1298,15 +1298,27 @@ body[data-theme="dark"] .fin-form-wrap { box-shadow: none; }
   font: 700 .74rem var(--font); color: var(--accent-deep);
 }
 
-/* ---- Hero: el número del mes y su composición ---- */
+/* ---- Hero: qué entra, qué sale y qué queda ---- */
 .fin-hero { padding: 16px 18px 14px; }
-.fin-hero-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.fin-hero-duo {
+  display: grid; grid-template-columns: 1fr 1fr;
+  gap: 12px; align-items: start;
+}
+.fin-hero-lado { min-width: 0; }
+.fin-hero-lado--sale { text-align: right; }
 .fin-hero-key {
+  display: flex; align-items: center; gap: 5px;
   font-size: .68rem; font-weight: 800; color: var(--ink-soft);
   text-transform: uppercase; letter-spacing: .09em;
 }
-.fin-hero-val { font-size: 2.15rem; font-weight: 800; letter-spacing: -.02em; line-height: 1.1; margin-top: 2px; }
-.fin-hero-usd { font-size: .9rem; font-weight: 700; color: var(--ink-soft); margin-top: 1px; }
+.fin-hero-lado--sale .fin-hero-key { justify-content: flex-end; }
+.fin-hero-val {
+  font-size: 1.62rem; font-weight: 800; letter-spacing: -.02em;
+  line-height: 1.15; margin-top: 3px;
+  overflow-wrap: anywhere;
+}
+.fin-hero-val--entra { color: var(--fin-ok); }
+.fin-hero-usd { font-size: .82rem; font-weight: 700; color: var(--ink-soft); margin-top: 1px; }
 
 .fin-alloc {
   display: flex; gap: 2px; height: 9px; margin: 13px 0 10px;
@@ -1327,10 +1339,10 @@ body[data-theme="dark"] .fin-alloc { background: rgba(255,255,255,.06); }
 .fin-hero-linea b { font-weight: 800; }
 
 .fin-cta {
-  display: block; width: 100%; text-align: left;
-  background: none; border: none; cursor: pointer; padding: 0 0 10px;
-  font: 700 .78rem var(--font); color: var(--accent-deep);
-  border-bottom: 1px solid var(--fin-rule);
+  display: block; text-align: left; margin-top: 4px;
+  background: none; border: none; cursor: pointer; padding: 0;
+  font: 800 .95rem var(--font); color: var(--accent-deep);
+  line-height: 1.25;
 }
 
 .fin-desglose { padding-top: 4px; }

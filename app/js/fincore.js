@@ -195,8 +195,16 @@ export function montoEn(r, mes, ctx) {
 
 /**
  * `fecha_primer_venc` es el vencimiento de `cuota_actual` (la próxima a pagar),
- * así que el plan entero se reconstruye hacia atrás y hacia adelante. Eso
- * permite ver la carga de deuda de meses pasados, no sólo la futura.
+ * así que el plan entero se reconstruye hacia atrás y hacia adelante. Las
+ * cuotas anteriores a `cuota_actual` sirven para graficar la carga de deuda
+ * que YA pagaste.
+ *
+ * OJO — sólo se reconstruye hacia atrás para meses ya cerrados. Del mes
+ * corriente en adelante se cuenta exactamente lo mismo que el módulo Cuotas
+ * (de `cuota_actual` para arriba). Sin esa guarda, una cuota que vence el 1°
+ * del mes que viene metía su cuota anterior en el mes actual y el Panel
+ * mostraba $2.087.600 donde Cuotas mostraba $1.924.600: dos pantallas de la
+ * misma app contradiciéndose, que es peor que un número redondeado de más.
  */
 export function calendarioCuotas(cuotas) {
   const porMes = new Map();
@@ -204,6 +212,7 @@ export function calendarioCuotas(cuotas) {
     if (c.estado !== 'activa') continue;
     for (let n = 1; n <= c.cuota_total; n++) {
       const mes = addMesesFecha(c.fecha_primer_venc, n - c.cuota_actual);
+      if (n < c.cuota_actual && mes >= MES_HOY) continue;   // ya pagada, no la cobran nunca más
       if (!porMes.has(mes)) porMes.set(mes, { ...cero(), items: [] });
       const acc = porMes.get(mes);
       sumar(acc, c.monto_cuota, c.moneda);
@@ -237,13 +246,13 @@ export function contexto({ gastos, cuotas, recurrentes, ahorros }) {
 export function fotoDelMes(mes, ctx, base = 'caja') {
   const ingresos = cero(), fijos = cero(), subs = cero();
   const varCaja = cero(), varConsumo = cero(), aportes = cero(), retiros = cero();
-  const filasFijos = [], filasSubs = [];
+  const filasFijos = [], filasSubs = [], filasIngresos = [];
 
   for (const r of ctx.recurrentes) {
     if (!vigenteEn(r, mes, ctx)) continue;
     const m = montoEn(r, mes, ctx);
     if (!m) continue;
-    if (r.tipo === 'ingreso') sumar(ingresos, m, r.moneda);
+    if (r.tipo === 'ingreso') { sumar(ingresos, m, r.moneda); filasIngresos.push({ r, monto: m }); }
     else if (r.tipo === 'suscripcion') { sumar(subs, m, r.moneda); filasSubs.push({ r, monto: m }); }
     else { sumar(fijos, m, r.moneda); filasFijos.push({ r, monto: m }); }
   }
@@ -272,7 +281,7 @@ export function fotoDelMes(mes, ctx, base = 'caja') {
     varCaja, varConsumo, variable, egreso, egresoCaja, egresoConsumo,
     aportes, retiros,
     disponible: { ars: ingresos.ars - egreso.ars, usd: ingresos.usd - egreso.usd },
-    filasFijos, filasSubs,
+    filasFijos, filasSubs, filasIngresos,
   };
 }
 
