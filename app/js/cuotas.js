@@ -2,6 +2,7 @@
 import { getCuotas, addCuota, removeCuota, updateCuotaEstado } from './store.js';
 import { confirmar } from './dialog.js';
 import { equivalente, casaActual, siguienteCasa, onCotizacion, ahorroVsTarjeta, fmtARS0 } from './cotizacion.js';
+import { mediosCredito } from './medios-credito.js';
 
 const fmtARS = new Intl.NumberFormat('es-AR', {
   style: 'currency', currency: 'ARS', minimumFractionDigits: 0, maximumFractionDigits: 0,
@@ -13,13 +14,6 @@ const fmtUSD = new Intl.NumberFormat('es-AR', {
 });
 const esUsd = (c) => c.moneda === 'USD';
 const fmt = (monto, moneda) => (moneda === 'USD' ? fmtUSD : fmtARS).format(monto);
-
-const TARJETAS = [
-  { key: 'visa', label: 'Visa',    emoji: '💳' },
-  { key: 'mac',  label: 'Mac',     emoji: '⬛' },
-  { key: 'mp',   label: 'MP',      emoji: '🔵' },
-  { key: 'efectivo', label: 'Efec', emoji: '💵' },
-];
 
 let tarjetaSel = 'visa';
 const $ = (sel) => document.querySelector(sel);
@@ -88,12 +82,12 @@ function renderResumen(cuotas, primerMes) {
 
   const total = Object.values(porTarjeta).reduce((a, b) => a + b, 0);
   const totalUsd = Object.values(porTarjetaUsd).reduce((a, b) => a + b, 0);
-  const filas = TARJETAS
+  const filas = mediosCredito()
     .filter((t) => porTarjeta[t.key] || porTarjetaUsd[t.key])
     .map((t) => `
       <div class="resumen-fila">
         <span class="resumen-fila-emoji">${t.emoji}</span>
-        <span class="resumen-fila-label">${t.label}</span>
+        <span class="resumen-fila-label">${t.nombre}</span>
         <span class="resumen-fila-monto">${fmtARS.format(porTarjeta[t.key] || 0)}${
           porTarjetaUsd[t.key] ? ` <span class="monto-usd">+ ${fmtUSD.format(porTarjetaUsd[t.key])}</span>` : ''
         }</span>
@@ -170,7 +164,8 @@ function render() {
     return;
   }
 
-  const tarjetaEmoji = (key) => (TARJETAS.find((t) => t.key === key) || TARJETAS[0]).emoji;
+  const medios = mediosCredito();
+  const tarjetaEmoji = (key) => (medios.find((t) => t.key === key) || medios[0] || {}).emoji || '💳';
 
   $('#cuotas-lista').innerHTML = activas
     .sort((a, b) => a.fecha_primer_venc.localeCompare(b.fecha_primer_venc))
@@ -246,9 +241,11 @@ export function initCuotas() {
     siguienteCasa();
   });
 
-  // Chips de tarjeta
-  $('#cuota-tarjeta-chips').innerHTML = TARJETAS
-    .map((t) => `<button class="chip cat-chip ${t.key === tarjetaSel ? 'selected' : ''}" data-tk="${t.key}">${t.emoji} ${t.label}</button>`)
+  // Chips de tarjeta (bancos/tarjetas reales, editables desde el Panel)
+  const medios = mediosCredito();
+  if (!medios.some((m) => m.key === tarjetaSel)) tarjetaSel = medios[0]?.key || 'visa';
+  $('#cuota-tarjeta-chips').innerHTML = medios
+    .map((t) => `<button class="chip cat-chip ${t.key === tarjetaSel ? 'selected' : ''}" data-tk="${t.key}">${t.emoji} ${t.nombre}</button>`)
     .join('');
 
   $('#cuota-tarjeta-chips').addEventListener('click', (e) => {

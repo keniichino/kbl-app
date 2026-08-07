@@ -24,11 +24,15 @@ import { confirmar } from './dialog.js';
 import { detectar, descartar } from './detecciones.js';
 import { permiso, pedirPermiso, explicacion, notificar } from './avisos.js';
 import {
+  mediosCredito, mediosCreditoPorBanco, crearMedioCredito,
+  actualizarMedioCredito, borrarMedioCredito,
+} from './medios-credito.js';
+import {
   fmtARS, fmtUSD, fmtMoneda, fmtCorto, pct, variacion, escapar,
   MES_HOY, hoyIso, addMes, labelMes,
   cero, sumar, masMontos, hayUsd,
   MEDIOS, medioDe, TIPOS,
-  vigenteEn, montoEn, contexto, fotoDelMes, deudaPendiente,
+  vigenteEn, montoEn, contexto, fotoDelMes, deudaPendiente, hitosDeAumento,
 } from './fincore.js';
 
 const $ = (sel) => document.querySelector(sel);
@@ -332,6 +336,19 @@ function renderFilas(filas, ctx, { tipo }) {
                   <div class="fin-hist-mes">${labelMes(m, { corto: true })}</div>
                 </div>`).join('')}
             </div>
+            ${(() => {
+              const hitos = hitosDeAumento(r);
+              if (!hitos.length) return '';
+              return `<div class="fin-hitos">
+                <div class="fin-hitos-label">${esIngreso ? 'Historial de aumentos' : 'Cambios de monto'}</div>
+                ${hitos.map((h) => `
+                  <div class="fin-hito">
+                    <span class="fin-hito-mes">${labelMes(h.mes, { corto: true })} ${h.mes.slice(0, 4)}</span>
+                    <span class="fin-hito-monto">${fmtMoneda(h.monto, r.moneda)}</span>
+                    ${delta(h.monto, h.previo, { bueno: esIngreso ? 'suba' : 'baja', chico: true })}
+                  </div>`).join('')}
+              </div>`;
+            })()}
             ${enEdicion ? `
               <div class="fin-edit">
                 <input class="fin-edit-input" id="fin-edit-input" type="text" inputmode="decimal"
@@ -341,7 +358,7 @@ function renderFilas(filas, ctx, { tipo }) {
               </div>`
             : `
               <div class="fin-acciones">
-                <button class="fin-btn" data-accion="editar" data-id="${r.id}">✎ Actualizar monto</button>
+                <button class="fin-btn" data-accion="editar" data-id="${r.id}">${esIngreso ? '✎ Actualizar sueldo/ingreso' : '✎ Actualizar monto'}</button>
                 <button class="fin-btn" data-accion="pausar" data-id="${r.id}">${r.estado === 'activo' ? '⏸ Pausar' : '▶ Reactivar'}</button>
                 <button class="fin-btn fin-btn--del" data-accion="borrar" data-id="${r.id}">✕ Borrar</button>
               </div>`}
@@ -503,6 +520,47 @@ function renderAhorro(fotos, ctx) {
         </div>` : `<div class="fin-vacio"><p>Sin movimientos de ahorro.</p>
           <p class="fin-vacio-sub">Registrá cada vez que apartás plata (o comprás dólares) y el panel te dice qué tasa de ahorro sostenés.</p></div>`}
     </div>`;
+}
+
+/** Bancos y tarjetas: día de cierre y vencimiento de cada uno. Sin esto
+ * configurado, un gasto con esa tarjeta sigue agrupando por mes calendario
+ * (ver periodoDeGasto en fincore.js) — no hay nada que se rompa por no
+ * cargarlo todavía. */
+function renderMediosCredito() {
+  const grupos = mediosCreditoPorBanco();
+  if (!grupos.size) {
+    return `<div class="fin-card">
+      <div class="fin-card-head"><h2>Bancos y tarjetas</h2></div>
+      <div class="fin-vacio">
+        <p>Todavía no sincronizaron tus medios de pago.</p>
+        <p class="fin-vacio-sub">Esperá a que la app se conecte a internet, o agregá uno nuevo abajo.</p>
+      </div>
+    </div>`;
+  }
+  return `<div class="fin-card">
+    <div class="fin-card-head">
+      <h2>Bancos y tarjetas</h2>
+      <span class="fin-card-sub">cierre y vencimiento de cada una</span>
+    </div>
+    ${[...grupos.entries()].map(([banco, medios]) => `
+      <div class="fin-medio-banco">
+        <div class="fin-medio-banco-nombre">${escapar(banco)}</div>
+        ${medios.map((m) => `
+          <div class="fin-medio-fila">
+            <span class="fin-medio-emoji">${m.emoji}</span>
+            <span class="fin-medio-nombre">${escapar(m.nombre)}</span>
+            <label class="fin-medio-dia">cierre
+              <input type="number" min="1" max="31" inputmode="numeric"
+                     data-medio-id="${m.id}" data-campo="diaCierre" value="${m.diaCierre ?? ''}">
+            </label>
+            <label class="fin-medio-dia">vence
+              <input type="number" min="1" max="31" inputmode="numeric"
+                     data-medio-id="${m.id}" data-campo="diaVencimiento" value="${m.diaVencimiento ?? ''}">
+            </label>
+            <button class="fin-medio-del" data-medio-borrar="${m.id}" aria-label="Borrar ${escapar(m.nombre)}">✕</button>
+          </div>`).join('')}
+      </div>`).join('')}
+  </div>`;
 }
 
 function renderFlujo(fotos) {
@@ -682,6 +740,7 @@ function render() {
     cuotas: getCuotas(),
     recurrentes: getRecurrentes(),
     ahorros: getAhorros(),
+    medios: mediosCredito(),
   });
 
   const meses = Array.from({ length: 6 }, (_, i) => addMes(mesSel, i - 5));
@@ -710,6 +769,7 @@ function render() {
   $('#fin-subs').innerHTML = renderSubs(ctx.foto, ctx);
   $('#fin-deuda').innerHTML = renderDeuda(ctx);
   $('#fin-ahorro').innerHTML = renderAhorro(fotos, ctx);
+  $('#fin-medios').innerHTML = renderMediosCredito();
   $('#fin-flujo').innerHTML = renderFlujo(fotos);
   $('#fin-proyeccion').innerHTML = renderProyeccion(ctx);
 
@@ -762,6 +822,35 @@ function guardarConcepto() {
   $('#fin-dia').value = '';
   $('#fin-form-concepto').removeAttribute('open');
   render();
+}
+
+function guardarMedio() {
+  const nombre = $('#medio-nombre').value.trim();
+  if (!nombre) return $('#medio-nombre').focus();
+  const banco = $('#medio-banco').value.trim();
+  const diaCierre = $('#medio-cierre').value ? Math.max(1, Math.min(31, parseInt($('#medio-cierre').value, 10))) : null;
+  const diaVencimiento = $('#medio-vencimiento').value ? Math.max(1, Math.min(31, parseInt($('#medio-vencimiento').value, 10))) : null;
+
+  crearMedioCredito({ banco, nombre, diaCierre, diaVencimiento });
+
+  $('#medio-banco').value = '';
+  $('#medio-nombre').value = '';
+  $('#medio-cierre').value = '';
+  $('#medio-vencimiento').value = '';
+  $('#fin-form-medio').removeAttribute('open');
+  render();
+}
+
+async function accionMedio(hacer, id) {
+  if (hacer === 'borrar') {
+    const ok = await confirmar({
+      titulo: '¿Borrar este medio de pago?',
+      mensaje: 'Los gastos y cuotas ya cargados con esta tarjeta no se borran, pero dejan de tener cierre configurado.',
+      accion: 'Borrar',
+      destructivo: true,
+    });
+    if (ok) { borrarMedioCredito(id); render(); }
+  }
 }
 
 function guardarAhorro() {
@@ -898,6 +987,18 @@ export function initPanel() {
   $('#ahorro-fecha').value = hoyIso();
   $('#btn-ahorro-guardar').addEventListener('click', guardarAhorro);
 
+  // Alta y edición de bancos/tarjetas
+  $('#btn-medio-guardar').addEventListener('click', guardarMedio);
+  $('#fin-medios').addEventListener('change', (e) => {
+    const inp = e.target.closest('[data-medio-id]');
+    if (!inp) return;
+    const { medioId, campo } = inp.dataset;
+    const v = inp.value === '' ? null : Math.max(1, Math.min(31, parseInt(inp.value, 10) || 1));
+    inp.value = v ?? '';
+    actualizarMedioCredito(medioId, { [campo]: v });
+    render();
+  });
+
   // Meta de ahorro (preferencia local, no viaja a la nube)
   const meta = $('#fin-meta-input');
   meta.value = cfg().meta ?? 20;
@@ -913,6 +1014,8 @@ export function initPanel() {
     if (e.target.closest('.cotiz-eq')) return siguienteCasa();
     const alerta = e.target.closest('[data-hacer]');
     if (alerta) return accionAlerta(alerta.dataset.hacer, alerta.dataset.alerta);
+    const borrarMedio = e.target.closest('[data-medio-borrar]');
+    if (borrarMedio) return accionMedio('borrar', borrarMedio.dataset.medioBorrar);
     const btn = e.target.closest('[data-accion]');
     if (!btn) return;
     const { accion, id } = btn.dataset;

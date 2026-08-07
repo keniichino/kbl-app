@@ -3,6 +3,9 @@ import { getGastos, addGasto, removeGasto } from './store.js';
 import { confirmar } from './dialog.js';
 import { equivalente, casaActual, siguienteCasa, onCotizacion } from './cotizacion.js';
 import { clasificar } from './catalogo.js';
+import { mediosCredito } from './medios-credito.js';
+import { reconocerTicket } from './ticket-ocr.js';
+import { parsearTicket } from './ticket-parser.js';
 
 export const CATEGORIAS = [
   { key: 'comida',     emoji: '🍔', label: 'Comida' },
@@ -13,13 +16,6 @@ export const CATEGORIAS = [
   { key: 'casa',       emoji: '🏠', label: 'Casa' },
   { key: 'salud',      emoji: '💊', label: 'Salud' },
   { key: 'otros',      emoji: '📦', label: 'Otros' },
-];
-
-const TARJETAS_GASTO = [
-  { key: 'visa',     emoji: '💳', label: 'Visa' },
-  { key: 'mac',      emoji: '⬛', label: 'Mac' },
-  { key: 'mp',       emoji: '🔵', label: 'MP' },
-  { key: 'efectivo', emoji: '💵', label: 'Efec' },
 ];
 
 const fmtARS = new Intl.NumberFormat('es-AR', {
@@ -97,6 +93,7 @@ function render() {
 
   // Lista agrupada por día (últimos 40 movimientos)
   const recientes = gastos.slice().sort((a, b) => b.ts - a.ts).slice(0, 40);
+  const medios = mediosCredito();
   let html = '';
   let diaActual = null;
   for (const g of recientes) {
@@ -104,13 +101,13 @@ function render() {
       diaActual = g.fecha;
       html += `<div class="gasto-dia">${etiquetaDia(g.fecha)}</div>`;
     }
-    const tk = TARJETAS_GASTO.find((t) => t.key === g.tarjeta);
+    const tk = medios.find((t) => t.key === g.tarjeta);
     html += `
       <div class="gasto-item">
         <span class="gasto-emoji">${emojiDe(g.categoria)}</span>
         <div class="gasto-item-mid">
           <span class="gasto-desc">${escapar(g.descripcion) || (CATEGORIAS.find((c) => c.key === g.categoria)?.label ?? 'Gasto')}</span>
-          ${tk ? `<span class="gasto-tarjeta-badge">${tk.emoji} ${tk.label}</span>` : ''}
+          ${tk ? `<span class="gasto-tarjeta-badge">${tk.emoji} ${tk.nombre}</span>` : ''}
         </div>
         <span class="gasto-monto${g.moneda === 'USD' ? ' es-usd' : ''}">${fmt(g.monto, g.moneda)}</span>
         <button class="gasto-borrar" data-id="${g.id}" aria-label="Borrar">✕</button>
@@ -118,6 +115,47 @@ function render() {
   }
   $('#gastos-lista').innerHTML = html ||
     '<div class="forest-empty"><div class="empty-emoji">💸</div><p>Sin gastos todavía.<br>El primero se carga acá arriba en 5 segundos.</p></div>';
+}
+
+// Mismo separador de miles que usa el input al tipear, para que el valor
+// precargado por OCR se vea igual que si lo hubieras escrito vos.
+function formatearMontoInput(n) {
+  const esEntero = Number.isInteger(n);
+  const [ent, dec] = n.toFixed(esEntero ? 0 : 2).split('.');
+  const entFmt = ent.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  return dec ? `${entFmt},${dec}` : entFmt;
+}
+
+async function procesarFoto(file) {
+  const estado = $('#gasto-foto-estado');
+  const btn = $('#btn-gasto-foto');
+  btn.disabled = true;
+  estado.hidden = false;
+  estado.textContent = 'Leyendo ticket…';
+  try {
+    const texto = await reconocerTicket(file, (p) => {
+      estado.textContent = `Leyendo ticket… ${Math.round(p * 100)}%`;
+    });
+    const { monto, comercio } = parsearTicket(texto);
+
+    if (monto) $('#gasto-monto').value = formatearMontoInput(monto);
+    if (comercio) {
+      $('#gasto-desc').value = comercio;
+      // Dispara la autocategorización que ya existe para el tipeo manual.
+      $('#gasto-desc').dispatchEvent(new Event('input', { bubbles: true }));
+    }
+
+    estado.textContent = (monto || comercio)
+      ? 'Revisá los datos y confirmá abajo.'
+      : 'No pude leer el ticket — cargalo a mano.';
+    $('#gasto-monto').focus();
+  } catch (err) {
+    console.warn('[ocr]', err);
+    estado.textContent = 'No pude leer el ticket — cargalo a mano.';
+  } finally {
+    btn.disabled = false;
+    setTimeout(() => { estado.hidden = true; }, 4000);
+  }
 }
 
 function agregar() {
@@ -164,8 +202,8 @@ export function initGastos() {
     .map((c) => `<button class="chip cat-chip ${c.key === catSeleccionada ? 'selected' : ''}" data-cat="${c.key}">${c.emoji} ${c.label}</button>`)
     .join('');
 
-  $('#gasto-tarjeta-chips').innerHTML = TARJETAS_GASTO
-    .map((t) => `<button class="chip tarjeta-chip" data-tk="${t.key}">${t.emoji} ${t.label}</button>`)
+  $('#gasto-tarjeta-chips').innerHTML = mediosCredito()
+    .map((t) => `<button class="chip tarjeta-chip" data-tk="${t.key}">${t.emoji} ${t.nombre}</button>`)
     .join('');
 
   $('#cat-chips').addEventListener('click', (e) => {
@@ -226,6 +264,13 @@ export function initGastos() {
     const entFmt = ent.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
     const dec = resto.length ? ',' + resto.join('').slice(0, 2) : '';
     e.target.value = entFmt + dec;
+  });
+
+  $('#btn-gasto-foto').addEventListener('click', () => $('#gasto-foto-input').click());
+  $('#gasto-foto-input').addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    e.target.value = ''; // permite elegir la misma foto de nuevo más adelante
+    if (file) procesarFoto(file);
   });
 
   $('#btn-gasto').addEventListener('click', agregar);

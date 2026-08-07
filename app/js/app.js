@@ -4,6 +4,7 @@ import { getSession, signIn, signUp, signOut, mensajeError, esEmailSinConfirmar,
 import { SPECIES, renderTree, miniTree, speciesCard, dayPhase } from './tree.js';
 import { initGastos, renderGastos } from './gastos.js';
 import { initViewer360 } from './viewer360.js';
+import { initBosqueVuelo } from './bosque-vuelo.js';
 import { initNotas, renderNotas } from './notas.js';
 import { initCuotas, renderCuotas } from './cuotas.js';
 import { initPanel, renderPanel } from './panel.js';
@@ -330,7 +331,7 @@ document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible' && getActive()) requestWakeLock();
 });
 
-// ---------- Islas 360: visor con selector de especies ----------
+// ---------- Islas 360: carrusel de vuelo entre especies ----------
 const ISLAS = [
   { key: 'sakura',   nombre: 'Sakura',   emoji: '🌸' },
   { key: 'flor',     nombre: 'Flor',     emoji: '🌷' },
@@ -340,41 +341,7 @@ const ISLAS = [
 ];
 
 function initIslas() {
-  const viewer = initViewer360($('#viewer-sakura'), { frames: 36 });
-  const cont = $('#viewer-species');
-
-  cont.innerHTML = ISLAS
-    .map((s) => `<button class="seg-btn" data-isla="${s.key}">${s.emoji} ${s.nombre}</button>`)
-    .join('');
-
-  const cargar = (key, btn) => {
-    cont.querySelectorAll('.seg-btn').forEach((b) => b.classList.toggle('selected', b === btn));
-    viewer.setSrc(
-      (i) => `assets/360/${key}/${String(i).padStart(2, '0')}.webp`,
-      () => { btn.hidden = true; } // especie sin assets: se esconde su botón
-    );
-  };
-
-  cont.addEventListener('click', (e) => {
-    const btn = e.target.closest('.seg-btn');
-    if (btn) cargar(btn.dataset.isla, btn);
-  });
-
-  // arranque: sakura (si falta, se oculta todo el showcase)
-  const primero = cont.querySelector('.seg-btn');
-  cont.querySelectorAll('.seg-btn').forEach((b) => {
-    if (b !== primero) {
-      // sondeo silencioso: si la especie no tiene frame 0, ocultar su botón
-      const probe = new Image();
-      probe.src = `assets/360/${b.dataset.isla}/00.webp`;
-      probe.onerror = () => { b.hidden = true; };
-    }
-  });
-  primero.classList.add('selected');
-  viewer.setSrc(
-    (i) => `assets/360/sakura/${String(i).padStart(2, '0')}.webp`,
-    () => $('#sakura-showcase').setAttribute('hidden', '')
-  );
+  initBosqueVuelo($('#bosque-pista'), ISLAS);
 }
 
 // ---------- Sync: reaccionar a cambios del otro dispositivo ----------

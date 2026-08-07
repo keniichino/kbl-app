@@ -1,7 +1,7 @@
 // ====== Service Worker — offline + actualizaciones al abrir ======
 // Estrategia: red-primero para HTML/CSS/JS (así cada deploy llega al abrir la
 // app), caché como respaldo offline. Cache-first solo para íconos y fuentes.
-const CACHE = 'kbl-v33';
+const CACHE = 'kbl-v35';
 const ASSETS = [
   './',
   './index.html',
@@ -22,10 +22,17 @@ const ASSETS = [
   './js/avisos.js',
   './js/cotizacion.js',
   './js/viewer360.js',
+  './js/bosque-vuelo.js',
   './js/dialog.js',
+  './js/medios-credito.js',
+  './js/ticket-parser.js',
+  './js/ticket-ocr.js',
   './manifest.webmanifest',
   './icons/icon-192.png',
   './icons/icon-512.png',
+  // Nota: vendor/tesseract/* (motor OCR + datos de idioma, ~6MB) a propósito
+  // NO se precachea acá — se descarga sólo cuando se usa "Cargar por foto",
+  // para no pagar ese peso en cada instalación/actualización de la app.
 ];
 
 self.addEventListener('install', (e) => {

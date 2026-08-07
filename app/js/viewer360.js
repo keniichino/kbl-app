@@ -39,6 +39,7 @@ export function initViewer360(el, { frames = 36 } = {}) {
   let lastX = 0;
   let vel = 0;
   let auto = true; // gira solo, despacito, hasta que el usuario lo toca
+  let detenido = false; // corta el loop; para instancias descartables (ej. el carrusel del Bosque)
 
   function frameEnRango(f) {
     // floor + fracción, correcto también para f negativo
@@ -153,6 +154,7 @@ export function initViewer360(el, { frames = 36 } = {}) {
   }
 
   (function loop() {
+    if (detenido) return;
     if (auto) { frame += 0.045; show(); }
     else if (!dragging && Math.abs(vel) > 0.015) { frame += vel; vel *= 0.94; show(); }
     requestAnimationFrame(loop);
@@ -179,5 +181,13 @@ export function initViewer360(el, { frames = 36 } = {}) {
   el.addEventListener('pointerup', soltar);
   el.addEventListener('pointercancel', soltar);
 
-  return { setSrc, setEtapas, setProgreso };
+  // Corta el loop de animación y saca el canvas del DOM. Para instancias que
+  // se crean y descartan dinámicamente (el carrusel del Bosque): sin esto,
+  // cada isla que dejás de mirar seguiría girando sola para siempre.
+  function detener() {
+    detenido = true;
+    canvas.remove();
+  }
+
+  return { setSrc, setEtapas, setProgreso, detener };
 }

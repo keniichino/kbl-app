@@ -14,6 +14,7 @@ const KEYS = {
   cuotas: 'kbl.cuotas',
   recurrentes: 'kbl.recurrentes',
   ahorros: 'kbl.ahorros',
+  medios: 'kbl.medios_pago',
   uid: 'kbl.uid', // dueño de los datos locales actuales (para detectar cambio de cuenta)
 };
 
@@ -24,7 +25,7 @@ let currentUid = null; // user autenticado; el server igual valida vía RLS
 // en el mismo dispositivo, para no mezclar datos de dos usuarios).
 export function clearLocalData() {
   [KEYS.sessions, KEYS.active, KEYS.gastos, KEYS.notas, KEYS.cuotas,
-   KEYS.recurrentes, KEYS.ahorros].forEach(
+   KEYS.recurrentes, KEYS.ahorros, KEYS.medios].forEach(
     (k) => localStorage.removeItem(k)
   );
 }
@@ -147,9 +148,10 @@ export async function initSync(onRemoteChange) {
       supabase.from('cuotas').select('*'),
       supabase.from('recurrentes').select('*'),
       supabase.from('ahorros').select('*'),
+      supabase.from('medios_pago').select('*'),
     ]);
     const timeout = new Promise((_, rej) => setTimeout(rej, 3500, 'timeout'));
-    const [sess, act, gastosR, notasR, cuotasR, recuR, ahoR] = await Promise.race([pull, timeout]);
+    const [sess, act, gastosR, notasR, cuotasR, recuR, ahoR, medR] = await Promise.race([pull, timeout]);
     if (sess.data) write(KEYS.sessions, sess.data.map(fromRemote));
     if (!act.error) {
       const local = getActive();
@@ -166,6 +168,9 @@ export async function initSync(onRemoteChange) {
     if (recuR.data) mergeListPull('recurrentes', KEYS.recurrentes, recuR.data, fromRemoteRecurrente, toRemoteRecurrente,
       (local, remote) => local.updated > Date.parse(remote.updated_at));
     if (ahoR.data) mergeListPull('ahorros', KEYS.ahorros, ahoR.data, fromRemoteAhorro, toRemoteAhorro);
+    // Medios de pago: se editan (cargás el día de cierre real), last-write-wins por `updated`.
+    if (medR.data) mergeListPull('medios_pago', KEYS.medios, medR.data, fromRemoteMedio, toRemoteMedio,
+      (local, remote) => local.updated > Date.parse(remote.updated_at));
   } catch (err) {
     // Offline o timeout es esperable y la app sigue andando con lo local; lo
     // logueamos igual para poder distinguirlo de un error real del servidor.
@@ -203,6 +208,7 @@ export async function initSync(onRemoteChange) {
   suscribirLista('cuotas', KEYS.cuotas, fromRemoteCuota, 'cuotas');
   suscribirLista('recurrentes', KEYS.recurrentes, fromRemoteRecurrente, 'recurrentes');
   suscribirLista('ahorros', KEYS.ahorros, fromRemoteAhorro, 'ahorros');
+  suscribirLista('medios_pago', KEYS.medios, fromRemoteMedio, 'medios_pago');
 }
 
 // --- Gastos: [{ id, monto, descripcion, categoria, fecha, ts }] ---
@@ -481,6 +487,52 @@ export function addAhorro(mov) {
 export function removeAhorro(id) {
   write(KEYS.ahorros, getAhorros().filter((a) => a.id !== id));
   push(supabase.from('ahorros').delete().eq('id', id), 'ahorros delete');
+}
+
+// --- Medios de pago: bancos + tarjetas, con día de cierre y vencimiento ---
+// Reemplaza los valores fijos que antes vivían hardcodeados en cuotas.js/
+// fincore.js/gastos.js. Se puede ampliar desde la app (nuevo banco, nueva
+// tarjeta) sin tocar código.
+
+const toRemoteMedio = (m) => ({
+  id: m.id,
+  banco: m.banco || null,
+  nombre: m.nombre,
+  key: m.key,
+  dia_cierre: m.diaCierre ?? null,
+  dia_vencimiento: m.diaVencimiento ?? null,
+  activo: m.activo !== false,
+  created_at: m.created_at,
+  updated_at: new Date(m.updated).toISOString(),
+});
+const fromRemoteMedio = (r) => ({
+  id: r.id,
+  banco: r.banco || '',
+  nombre: r.nombre,
+  key: r.key,
+  diaCierre: r.dia_cierre ?? null,
+  diaVencimiento: r.dia_vencimiento ?? null,
+  activo: r.activo !== false,
+  created_at: r.created_at,
+  updated: Date.parse(r.updated_at),
+});
+
+export function getMediosPago() {
+  return read(KEYS.medios, []);
+}
+
+export function upsertMedioPago(medio) {
+  const item = { ...medio, updated: Date.now() };
+  const all = getMediosPago().filter((m) => m.id !== item.id);
+  all.push(item);
+  write(KEYS.medios, all);
+  push(supabase.from('medios_pago').upsert(toRemoteMedio(item), { onConflict: 'id' }), 'medios_pago upsert');
+  return item;
+}
+
+export function removeMedioPago(id) {
+  write(KEYS.medios, getMediosPago().filter((m) => m.id !== id));
+  push(supabase.from('medios_pago').delete().eq('id', id), 'medios_pago delete');
 }
 
 // --- Estadísticas derivadas ---

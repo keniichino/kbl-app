@@ -365,6 +365,41 @@ body[data-phase="noche"] .tabbar { background: linear-gradient(150deg, rgba(255,
 .viewer360.ready .viewer-hint { animation: hintFade 4s forwards; }
 @keyframes hintFade { 0%, 70% { opacity: .8; } 100% { opacity: 0; } }
 
+/* ====== Bosque: carrusel de vuelo entre islas (pseudo-3D) ====== */
+.bosque-vuelo {
+  position: relative;
+  height: 300px;
+  margin: 6px 16px;
+  border-radius: 22px;
+  overflow: hidden;
+  background: var(--sky);
+}
+.bosque-pista {
+  position: absolute;
+  inset: 0;
+  perspective: 900px;
+  touch-action: pan-y;
+  cursor: grab;
+}
+.bosque-pista.arrastrando { cursor: grabbing; }
+.isla-slot {
+  position: absolute;
+  top: 8%; left: 50%; bottom: 8%;
+  width: 150px;
+  margin-left: -75px;
+  transition: transform .12s linear, opacity .12s linear;
+  will-change: transform, opacity;
+}
+.isla-slot.oculta { display: none; }
+.isla-slot-img, .isla-slot canvas {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+  object-fit: contain;
+  pointer-events: none;
+  -webkit-user-drag: none;
+}
+.bosque-vuelo .viewer-hint { z-index: 210; }
+
 /* Selector de especie bajo el visor */
 .viewer-species {
   display: flex;
@@ -581,6 +616,21 @@ body[data-phase="noche"] .tabbar { background: linear-gradient(150deg, rgba(255,
 }
 #gasto-monto { font-size: 1.5rem; text-align: center; }
 .gasto-form input::placeholder { color: #9ab0a2; }
+
+.gasto-foto-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
+.btn-foto {
+  font: 800 .82rem var(--font);
+  color: var(--ink-soft);
+  background: rgba(255,255,255,.6);
+  border: 1.5px solid rgba(255,255,255,.8);
+  border-radius: 12px;
+  padding: 9px 14px;
+  cursor: pointer;
+}
+.btn-foto:active { transform: scale(.96); }
+.btn-foto:disabled { opacity: .6; }
+.gasto-foto-estado { font-size: .72rem; font-weight: 700; color: var(--ink-soft); }
+body[data-theme="dark"] .btn-foto { background: rgba(255,255,255,.07); border-color: rgba(255,255,255,.1); }
 
 /* Moneda: control segmentado al lado del monto, mismo lenguaje visual que el
    selector de especies del Bosque. Arranca siempre en pesos. */
@@ -823,6 +873,55 @@ body[data-theme="dark"] .resumen-ahorro { color: #6ee7b7; }
     height: var(--tabbar-h);
     padding-bottom: 0;
     margin: auto 0 0; /* pegada abajo; sin auto horizontal para que estire */
+  }
+}
+
+/* ====== Escritorio real: nav lateral + Panel a dos columnas ======
+   Arriba de 1024px el marco de teléfono centrado (bloque de arriba) ya no
+   alcanza — hay pantalla de sobra al costado sin usar. Acá #app pasa de
+   columna (contenido arriba, tabbar abajo) a fila (nav a la izquierda,
+   contenido a la derecha con su propio scroll), reusando el mismo markup:
+   `order` reubica el tabbar sin tocar el HTML. Foco/Bosque/Gastos/Cuotas/
+   Notas se mantienen en una sola columna, sólo con más aire; el Panel usa
+   el ancho extra con una grilla de 2 columnas. */
+@media (min-width: 1024px) {
+  #app {
+    width: min(94vw, 960px);
+    max-width: none;
+    flex: 0 0 min(94vw, 960px);
+    height: 780px;
+    max-height: 94dvh;
+    flex-direction: row;
+    align-items: stretch;
+    overflow: hidden;
+  }
+  .tabbar {
+    order: -1;
+    position: static;
+    flex-direction: column;
+    justify-content: center;
+    gap: 6px;
+    width: 92px;
+    height: 100%;
+    border-top: none;
+    border-right: 1px solid rgba(255,255,255,.5);
+    box-shadow: inset -1px 0 0 rgba(255,255,255,.6);
+  }
+  .tab { flex: 0 0 auto; padding: 10px 0; }
+  .view { flex: 1; min-width: 0; }
+  .view.active { display: flex; flex-direction: column; overflow-y: auto; height: 100%; }
+
+  #view-panel.active { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; align-content: start; }
+  #view-panel .view-header,
+  #view-panel .fin-base-wrap,
+  #view-panel #fin-alertas,
+  #view-panel #fin-hero,
+  #view-panel #fin-kpis,
+  #view-panel #fin-flujo,
+  #view-panel #fin-proyeccion,
+  #view-panel .fin-form-wrap,
+  #view-panel .fin-pie {
+    grid-column: 1 / -1;
   }
 }
 
@@ -1440,6 +1539,40 @@ body[data-theme="dark"] .fin-hist-col { background: rgba(255,255,255,.04); }
 .fin-hist-col--sel { background: color-mix(in srgb, var(--fin-fijo) 16%, transparent); }
 .fin-hist-monto { font-size: .68rem; font-weight: 800; color: var(--ink); }
 .fin-hist-mes { font-size: .6rem; color: var(--ink-soft); text-transform: uppercase; letter-spacing: .04em; }
+
+.fin-hitos { margin-bottom: 10px; }
+.fin-hitos-label {
+  font-size: .62rem; font-weight: 800; text-transform: uppercase; letter-spacing: .05em;
+  color: var(--ink-soft); margin-bottom: 5px;
+}
+.fin-hito {
+  display: flex; align-items: center; gap: 8px; padding: 6px 8px;
+  border-radius: 8px; background: rgba(0,0,0,.03); margin-bottom: 4px;
+}
+body[data-theme="dark"] .fin-hito { background: rgba(255,255,255,.04); }
+.fin-hito-mes { font-size: .68rem; color: var(--ink-soft); font-weight: 600; flex: 1; }
+.fin-hito-monto { font-size: .74rem; font-weight: 800; color: var(--ink); }
+
+.fin-medio-banco { margin-bottom: 10px; }
+.fin-medio-banco-nombre {
+  font-size: .68rem; font-weight: 800; text-transform: uppercase; letter-spacing: .05em;
+  color: var(--ink-soft); margin-bottom: 5px;
+}
+.fin-medio-fila {
+  display: flex; align-items: center; gap: 8px; padding: 7px 0;
+  border-bottom: 1px solid var(--fin-rule);
+}
+.fin-medio-fila:last-child { border-bottom: none; }
+.fin-medio-emoji { font-size: 1rem; }
+.fin-medio-nombre { flex: 1; font-size: .82rem; font-weight: 700; color: var(--ink); }
+.fin-medio-dia { display: flex; align-items: center; gap: 4px; font-size: .64rem; color: var(--ink-soft); font-weight: 600; }
+.fin-medio-dia input {
+  width: 34px; font: 700 .74rem var(--font); text-align: center; color: var(--ink);
+  border: 1px solid var(--fin-borde); border-radius: 6px; padding: 3px 2px; background: rgba(255,255,255,.6);
+}
+body[data-theme="dark"] .fin-medio-dia input { background: rgba(255,255,255,.06); }
+.fin-medio-del { border: none; background: none; color: var(--fin-mal); font-size: .9rem; cursor: pointer; padding: 2px 4px; opacity: .7; }
+.fin-medio-del:active { opacity: 1; }
 
 .fin-acciones, .fin-edit { display: flex; gap: 6px; flex-wrap: wrap; }
 .fin-btn {

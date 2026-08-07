@@ -89,11 +89,11 @@
         <div class="stat-card"><div class="stat-val" id="stat-arboles">0</div><div class="stat-key">árboles</div></div>
       </div>
       <div data-showcase id="sakura-showcase">
-        <h2 class="section-title">Tus islas</h2>
-        <div class="viewer360" id="viewer-sakura">
-          <div class="viewer-hint">arrastrá para girar</div>
+        <h2 class="section-title">Tu bosque</h2>
+        <div class="bosque-vuelo">
+          <div class="bosque-pista" id="bosque-pista"></div>
+          <div class="viewer-hint">arrastrá para volar entre islas · tocá una para girarla</div>
         </div>
-        <div class="viewer-species" id="viewer-species"></div>
       </div>
       <h2 class="section-title">Especies</h2>
       <div class="species-row" id="species-row"></div>
@@ -121,6 +121,11 @@
       </div>
 
       <div class="gasto-form">
+        <div class="gasto-foto-row">
+          <input id="gasto-foto-input" type="file" accept="image/*" capture="environment" hidden>
+          <button type="button" class="btn-foto" id="btn-gasto-foto">📷 Cargar por foto</button>
+          <span class="gasto-foto-estado" id="gasto-foto-estado" hidden></span>
+        </div>
         <div class="monto-row">
           <input id="gasto-monto" type="text" inputmode="decimal" placeholder="$ 0" autocomplete="off">
           <div class="seg-moneda" id="gasto-moneda" role="group" aria-label="Moneda">
@@ -277,6 +282,25 @@
             <span class="cuota-num-sep">% del ingreso</span>
           </div>
           <button class="btn-primary" id="btn-ahorro-guardar">Guardar movimiento</button>
+        </div>
+      </details>
+
+      <div id="fin-medios"></div>
+
+      <details class="fin-form-wrap" id="fin-form-medio">
+        <summary class="cuota-form-toggle">＋ Agregar banco o tarjeta</summary>
+        <div class="cuota-form-inner">
+          <input id="medio-banco" type="text" placeholder="Banco (ej. BBVA, o dejalo vacío)" autocomplete="off">
+          <input id="medio-nombre" type="text" placeholder="Tarjeta (ej. Visa)" autocomplete="off">
+          <div class="cuota-num-row">
+            <label class="cuota-num-label">Día de cierre</label>
+            <input id="medio-cierre" type="number" min="1" max="31" class="cuota-num-input" placeholder="—">
+          </div>
+          <div class="cuota-num-row">
+            <label class="cuota-num-label">Día de vencimiento</label>
+            <input id="medio-vencimiento" type="number" min="1" max="31" class="cuota-num-input" placeholder="—">
+          </div>
+          <button class="btn-primary" id="btn-medio-guardar">Agregar</button>
         </div>
       </details>
 

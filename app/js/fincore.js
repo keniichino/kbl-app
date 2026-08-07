@@ -191,6 +191,27 @@ export function montoEn(r, mes, ctx) {
   return montoDeclarado(r, mes);
 }
 
+/** Todo el historial declarado, ordenado por mes. Un ingreso (ej. sueldo) no
+ * tiene gasto que lo matchee, así que esto es la única fuente de verdad. */
+export function historialCompleto(r) {
+  return Object.entries(r.historial || {})
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([mes, monto]) => ({ mes, monto: Number(monto) || 0 }));
+}
+
+/** Sólo los meses donde el monto cambió de verdad — los aumentos reales,
+ * no cada mes que se repite el mismo valor. */
+export function hitosDeAumento(r) {
+  const serie = historialCompleto(r);
+  const hitos = [];
+  let previo = null;
+  for (const { mes, monto } of serie) {
+    if (previo != null && monto !== previo) hitos.push({ mes, monto, previo });
+    previo = monto;
+  }
+  return hitos;
+}
+
 // ---------- Cuotas: calendario completo ----------
 
 /**
@@ -222,13 +243,31 @@ export function calendarioCuotas(cuotas) {
   return porMes;
 }
 
+/**
+ * A qué período de facturación pertenece un gasto, según el día de cierre
+ * del medio con el que se pagó (ej. Visa cierra el 6 → un gasto del 7 ya es
+ * del período siguiente). Sin medio, o sin día de cierre configurado en ese
+ * medio, es el mes calendario de siempre — cero cambio de comportamiento
+ * hasta que el día de cierre real se cargue en "Bancos y tarjetas".
+ */
+export function periodoDeGasto(fechaIso, medio) {
+  const mesCalendario = fechaIso.slice(0, 7);
+  if (!medio || medio.diaCierre == null) return mesCalendario;
+  const dia = Number(fechaIso.slice(8, 10));
+  return dia > medio.diaCierre ? addMesesFecha(fechaIso, 1) : mesCalendario;
+}
+
 // ---------- Contexto y foto del mes ----------
 
-/** Índices y mapas que usan todos los cálculos. Se arma una vez por render. */
-export function contexto({ gastos, cuotas, recurrentes, ahorros }) {
+/** Índices y mapas que usan todos los cálculos. Se arma una vez por render.
+ * `medios`: lista de medios de pago (ver medios-credito.js) para resolver el
+ * día de cierre de cada gasto con tarjeta; opcional, sin ella se comporta
+ * como antes (mes calendario puro). */
+export function contexto({ gastos, cuotas, recurrentes, ahorros, medios = [] }) {
   const gastosPorMes = new Map();
   for (const g of gastos) {
-    const m = g.fecha.slice(0, 7);
+    const medio = medios.find((md) => md.key === g.tarjeta);
+    const m = periodoDeGasto(g.fecha, medio);
     if (!gastosPorMes.has(m)) gastosPorMes.set(m, []);
     gastosPorMes.get(m).push(g);
   }

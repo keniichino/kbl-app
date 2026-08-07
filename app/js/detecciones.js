@@ -141,7 +141,7 @@ function conocidosNoDeclarados(ctx) {
   return [...vistos.values()].map(({ g, hit, clase }) => ({
     id: `conocido:${hit.texto}`,
     tipo: 'conocido-no-declarado',
-    nivel: 'media',
+    nivel: 'alta',
     icono: clase === 'suscripcion' ? '🔁' : '🏠',
     titulo: `${hit.nombre} es ${clase === 'suscripcion' ? 'una suscripción' : 'un gasto fijo'}`,
     detalle: `Te lo cobraron ${fmtMoneda(g.monto, g.moneda)} el ${g.fecha.slice(8)}/${g.fecha.slice(5, 7)}${
