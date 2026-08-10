@@ -17,6 +17,10 @@ const KEYS = {
   inversiones: 'kbl.inversiones',
   medios: 'kbl.medios_pago',
   uid: 'kbl.uid', // dueño de los datos locales actuales (para detectar cambio de cuenta)
+  // Momento del último pull que trajo datos del server. Sirve para distinguir
+  // "lo creé offline y falta subirlo" de "esto ya no está porque lo borraron
+  // en el server": ver mergeListPull.
+  lastPull: 'kbl.lastPull',
 };
 
 let notify = () => {};
@@ -26,7 +30,7 @@ let currentUid = null; // user autenticado; el server igual valida vía RLS
 // en el mismo dispositivo, para no mezclar datos de dos usuarios).
 export function clearLocalData() {
   [KEYS.sessions, KEYS.active, KEYS.gastos, KEYS.notas, KEYS.cuotas,
-   KEYS.recurrentes, KEYS.ahorros, KEYS.inversiones, KEYS.medios].forEach(
+   KEYS.recurrentes, KEYS.ahorros, KEYS.inversiones, KEYS.medios, KEYS.lastPull].forEach(
     (k) => localStorage.removeItem(k)
   );
 }
@@ -178,6 +182,10 @@ export async function initSync(onRemoteChange) {
     // romper el pull entero de las demás tablas.
     if (invR?.data) mergeListPull('inversiones', KEYS.inversiones, invR.data, fromRemoteInversion, toRemoteInversion);
     else if (invR?.error) console.warn('[sync] inversiones:', invR.error.message, '— ¿falta correr supabase/inversiones-setup.sql?');
+    // "Hasta acá estuvo sincronizado con el server." Lo lee mergeListPull en la
+    // próxima corrida para no confundir un borrado remoto con un alta offline.
+    // Se marca sólo si el pull salió bien: si hubo timeout no sabemos nada.
+    localStorage.setItem(KEYS.lastPull, String(Date.now()));
   } catch (err) {
     // Offline o timeout es esperable y la app sigue andando con lo local; lo
     // logueamos igual para poder distinguirlo de un error real del servidor.
@@ -329,11 +337,26 @@ function mergeListPull(tableName, key, remoteRows, fromRemote, toRemote, localGa
     }
   }
 
-  // Ítems creados offline en este dispositivo (no están en el server): empujar y conservar
+  // Ítems locales que el server no tiene. Hay dos motivos posibles y hay que
+  // distinguirlos, porque la acción correcta es la opuesta:
+  //   a) lo creaste offline después del último pull  -> falta subirlo
+  //   b) existía y lo borraron en el server          -> hay que borrarlo acá
+  // Antes se asumía siempre (a), así que cualquier borrado hecho del lado del
+  // server volvía solo en la próxima apertura de la app: el 09/08/2026 eso
+  // reinsertó 324 gastos ya borrados, uno por uno. El corte es el timestamp
+  // del último pull: lo anterior ya estuvo sincronizado alguna vez, así que si
+  // hoy no está en el server es porque lo borraron.
+  const ultimoPull = Number(localStorage.getItem(KEYS.lastPull) || 0);
   for (const l of local) {
-    if (!remoteIds.has(l.id)) {
+    if (remoteIds.has(l.id)) continue;
+    const nacidoLocal = Number(l.ts || l.updated || l.created || 0);
+    if (ultimoPull && nacidoLocal > ultimoPull) {
       push(supabase.from(tableName).upsert(toRemote(l), { onConflict: 'id' }), `${tableName} push (creado offline)`);
       resultado.push(l);
+    } else {
+      // Sin lastPull todavía (primera corrida con esta versión) el server es la
+      // fuente de verdad: se descarta lo local huérfano en vez de resucitarlo.
+      console.warn(`[sync] ${tableName}: descarto ${l.id} — no está en el server y es anterior al último pull`);
     }
   }
 
