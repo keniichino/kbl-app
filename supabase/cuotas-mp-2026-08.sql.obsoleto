@@ -1,0 +1,112 @@
+-- ============================================================
+-- Cuotas de Mercado Pago según el resumen de 2026-08 (vence 2026-08-10).
+--
+-- Son CINCO compras distintas con plazos distintos, no una sola cuota de
+-- $383.889: dos terminan este mes y las otras tres siguen hasta enero 2027.
+-- Cargarlas como una sola hacía que la proyección de deuda mostrara el mismo
+-- importe todos los meses en vez de escalonarse.
+--
+-- Saldo total pendiente desde 2026-08: $ 793.114
+--
+-- CORRER EN EL PROYECTO PERSONAL (KBL APP), no en el de la empresa.
+--
+-- Idempotente: matchea por descripción + monto, así que si ya tenías la cuota
+-- cargada le corrige el número y el vencimiento en vez de duplicarla.
+-- ============================================================
+
+begin;
+
+-- MERCADOLIBRE: cuota 6 de 6, quedan 1 ($ 23.103) — ES LA ÚLTIMA
+insert into public.cuotas (id, descripcion, tarjeta, monto_cuota, cuota_actual, cuota_total, fecha_primer_venc, estado, moneda, created_at)
+select gen_random_uuid(), 'MERCADOLIBRE', 'mp', 23102.64, 6, 6, '2026-08-10', 'activa', 'ARS', '2026-02-21'
+ where not exists (
+   select 1 from public.cuotas
+    where user_id = auth.uid() and tarjeta = 'mp'
+      and round(monto_cuota::numeric, 2) = 23102.64
+      and cuota_total = 6
+ );
+
+update public.cuotas
+   set cuota_actual = 6, fecha_primer_venc = '2026-08-10',
+       monto_cuota = 23102.64, estado = 'activa', descripcion = 'MERCADOLIBRE'
+ where user_id = auth.uid() and tarjeta = 'mp'
+   and round(monto_cuota::numeric, 2) = 23102.64
+   and cuota_total = 6;
+
+-- IXPETS: cuota 4 de 9, quedan 6 ($ 97.066)
+insert into public.cuotas (id, descripcion, tarjeta, monto_cuota, cuota_actual, cuota_total, fecha_primer_venc, estado, moneda, created_at)
+select gen_random_uuid(), 'IXPETS', 'mp', 16177.67, 4, 9, '2026-08-10', 'activa', 'ARS', '2026-04-17'
+ where not exists (
+   select 1 from public.cuotas
+    where user_id = auth.uid() and tarjeta = 'mp'
+      and round(monto_cuota::numeric, 2) = 16177.67
+      and cuota_total = 9
+ );
+
+update public.cuotas
+   set cuota_actual = 4, fecha_primer_venc = '2026-08-10',
+       monto_cuota = 16177.67, estado = 'activa', descripcion = 'IXPETS'
+ where user_id = auth.uid() and tarjeta = 'mp'
+   and round(monto_cuota::numeric, 2) = 16177.67
+   and cuota_total = 9;
+
+-- ARRAYSRL: cuota 2 de 3, quedan 2 ($ 560.673)
+insert into public.cuotas (id, descripcion, tarjeta, monto_cuota, cuota_actual, cuota_total, fecha_primer_venc, estado, moneda, created_at)
+select gen_random_uuid(), 'ARRAYSRL', 'mp', 280336.67, 2, 3, '2026-08-10', 'activa', 'ARS', '2026-06-06'
+ where not exists (
+   select 1 from public.cuotas
+    where user_id = auth.uid() and tarjeta = 'mp'
+      and round(monto_cuota::numeric, 2) = 280336.67
+      and cuota_total = 3
+ );
+
+update public.cuotas
+   set cuota_actual = 2, fecha_primer_venc = '2026-08-10',
+       monto_cuota = 280336.67, estado = 'activa', descripcion = 'ARRAYSRL'
+ where user_id = auth.uid() and tarjeta = 'mp'
+   and round(monto_cuota::numeric, 2) = 280336.67
+   and cuota_total = 3;
+
+-- MERCADOLIBRE: cuota 2 de 4, quedan 3 ($ 71.999)
+insert into public.cuotas (id, descripcion, tarjeta, monto_cuota, cuota_actual, cuota_total, fecha_primer_venc, estado, moneda, created_at)
+select gen_random_uuid(), 'MERCADOLIBRE', 'mp', 23999.75, 2, 4, '2026-08-10', 'activa', 'ARS', '2026-06-11'
+ where not exists (
+   select 1 from public.cuotas
+    where user_id = auth.uid() and tarjeta = 'mp'
+      and round(monto_cuota::numeric, 2) = 23999.75
+      and cuota_total = 4
+ );
+
+update public.cuotas
+   set cuota_actual = 2, fecha_primer_venc = '2026-08-10',
+       monto_cuota = 23999.75, estado = 'activa', descripcion = 'MERCADOLIBRE'
+ where user_id = auth.uid() and tarjeta = 'mp'
+   and round(monto_cuota::numeric, 2) = 23999.75
+   and cuota_total = 4;
+
+-- ELECTROWORLD: cuota 2 de 2, quedan 1 ($ 40.273) — ES LA ÚLTIMA
+insert into public.cuotas (id, descripcion, tarjeta, monto_cuota, cuota_actual, cuota_total, fecha_primer_venc, estado, moneda, created_at)
+select gen_random_uuid(), 'ELECTROWORLD', 'mp', 40272.74, 2, 2, '2026-08-10', 'activa', 'ARS', '2026-06-30'
+ where not exists (
+   select 1 from public.cuotas
+    where user_id = auth.uid() and tarjeta = 'mp'
+      and round(monto_cuota::numeric, 2) = 40272.74
+      and cuota_total = 2
+ );
+
+update public.cuotas
+   set cuota_actual = 2, fecha_primer_venc = '2026-08-10',
+       monto_cuota = 40272.74, estado = 'activa', descripcion = 'ELECTROWORLD'
+ where user_id = auth.uid() and tarjeta = 'mp'
+   and round(monto_cuota::numeric, 2) = 40272.74
+   and cuota_total = 2;
+
+commit;
+
+-- Verificación: el total de este mes tiene que dar $ 383.889.
+select descripcion, cuota_actual || '/' || cuota_total as cuota, monto_cuota,
+       fecha_primer_venc, (cuota_total - cuota_actual + 1) as restantes,
+       (cuota_total - cuota_actual + 1) * monto_cuota as pendiente
+  from public.cuotas
+ where user_id = auth.uid() and tarjeta = 'mp' and estado = 'activa'
+ order by fecha_primer_venc, descripcion;

@@ -33,3 +33,6 @@ supabase/.branches/
 # Secretos locales (nunca al repo): password de la DB, tokens, etc.
 .env
 .env.*
+
+# Notas para retomar sesion: tienen refs de proyecto y prefijos de tokens
+RETOMAR-ACA.md
