@@ -395,11 +395,16 @@ export function initCuotas() {
       const c = getCuotas().find((x) => x.id === btnPagar.dataset.id);
       if (!c) return;
       const esUltima = c.cuota_actual >= c.cuota_total;
+      // Mismo cuidado que al pagar el resumen entero: avisar si todavía no venció.
+      const faltanC = diasEntre(hoyIso(), vencimientoDe(c, mediosCredito()));
+      const avisoC = faltanC > 0
+        ? ` Ojo: todavía no venció, le faltan ${faltanC} día${faltanC > 1 ? 's' : ''}.`
+        : '';
       const ok = await confirmar({
         titulo: esUltima ? '¿Pagaste la última cuota?' : `¿Pagaste la cuota ${c.cuota_actual} de ${c.cuota_total}?`,
-        mensaje: esUltima
+        mensaje: (esUltima
           ? `"${c.descripcion}" sale de la lista y deja de contar como deuda.`
-          : `Baja ${fmt(c.monto_cuota, c.moneda)} del saldo y la próxima pasa a vencer el mes que viene.`,
+          : `Baja ${fmt(c.monto_cuota, c.moneda)} del saldo y la próxima pasa a vencer el mes que viene.`) + avisoC,
         accion: 'Sí, la pagué',
       });
       if (ok) { avanzarCuota(c); render(); }
@@ -427,11 +432,18 @@ export function initCuotas() {
       if (!delMes.length) return;
       const totalArs = delMes.filter((c) => c.moneda !== 'USD').reduce((a, c) => a + c.monto_cuota, 0);
       const medio = mediosCredito().find((m) => m.key === pagarTarjeta);
+      // El resumen del mes que viene también tiene su botón, así que se puede
+      // marcar como pagado algo que todavía no venció y adelantar las cuotas un
+      // mes de más sin querer. Se deja hacer (podés pagar antes), pero avisando.
+      const faltan = diasEntre(hoyIso(), vencimientoDe(delMes[0], mediosCredito()));
+      const aviso = faltan > 0
+        ? ` Ojo: todavía no venció, le faltan ${faltan} día${faltan > 1 ? 's' : ''}.`
+        : '';
       const ok = await confirmar({
         titulo: `¿Pagaste el resumen de ${medio?.nombre || pagarTarjeta}?`,
-        mensaje: delMes.length === 1
+        mensaje: (delMes.length === 1
           ? `Se marca 1 cuota por ${fmtARS.format(totalArs)}. Avanza un mes y el saldo baja.`
-          : `Se marcan ${delMes.length} cuotas por ${fmtARS.format(totalArs)}. Todas avanzan un mes y el saldo baja.`,
+          : `Se marcan ${delMes.length} cuotas por ${fmtARS.format(totalArs)}. Todas avanzan un mes y el saldo baja.`) + aviso,
         accion: 'Sí, lo pagué',
       });
       if (ok) { delMes.forEach(avanzarCuota); render(); }
