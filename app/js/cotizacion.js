@@ -57,6 +57,26 @@ export function siguienteCasa() {
   return casaActual();
 }
 
+/** Elige una casa puntual. Lo usa Ajustes, donde se ven las tres a la vez y
+ * ciclar de a una no tiene sentido. */
+export function elegirCasa(key) {
+  if (!CASAS.some((c) => c.key === key)) return casaActual();
+  casaSel = key;
+  localStorage.setItem(CLAVE_CASA, casaSel);
+  avisar();
+  return casaActual();
+}
+
+/** Valor de cada casa, para mostrarlas comparadas. */
+export function todasLasCotizaciones() {
+  const out = {};
+  for (const c of CASAS) {
+    const v = datos?.casas?.[c.key];
+    if (v) out[c.key] = (v.compra + v.venta) / 2 || v.venta || v.compra;
+  }
+  return out;
+}
+
 /**
  * Cotización vigente de la casa elegida.
  * Devuelve null si nunca se pudo bajar (primera vez sin internet).

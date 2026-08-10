@@ -14,6 +14,7 @@ const KEYS = {
   cuotas: 'kbl.cuotas',
   recurrentes: 'kbl.recurrentes',
   ahorros: 'kbl.ahorros',
+  inversiones: 'kbl.inversiones',
   medios: 'kbl.medios_pago',
   uid: 'kbl.uid', // dueño de los datos locales actuales (para detectar cambio de cuenta)
 };
@@ -25,7 +26,7 @@ let currentUid = null; // user autenticado; el server igual valida vía RLS
 // en el mismo dispositivo, para no mezclar datos de dos usuarios).
 export function clearLocalData() {
   [KEYS.sessions, KEYS.active, KEYS.gastos, KEYS.notas, KEYS.cuotas,
-   KEYS.recurrentes, KEYS.ahorros, KEYS.medios].forEach(
+   KEYS.recurrentes, KEYS.ahorros, KEYS.inversiones, KEYS.medios].forEach(
     (k) => localStorage.removeItem(k)
   );
 }
@@ -149,9 +150,10 @@ export async function initSync(onRemoteChange) {
       supabase.from('recurrentes').select('*'),
       supabase.from('ahorros').select('*'),
       supabase.from('medios_pago').select('*'),
+      supabase.from('inversiones').select('*'),
     ]);
     const timeout = new Promise((_, rej) => setTimeout(rej, 3500, 'timeout'));
-    const [sess, act, gastosR, notasR, cuotasR, recuR, ahoR, medR] = await Promise.race([pull, timeout]);
+    const [sess, act, gastosR, notasR, cuotasR, recuR, ahoR, medR, invR] = await Promise.race([pull, timeout]);
     if (sess.data) write(KEYS.sessions, sess.data.map(fromRemote));
     if (!act.error) {
       const local = getActive();
@@ -171,6 +173,11 @@ export async function initSync(onRemoteChange) {
     // Medios de pago: se editan (cargás el día de cierre real), last-write-wins por `updated`.
     if (medR.data) mergeListPull('medios_pago', KEYS.medios, medR.data, fromRemoteMedio, toRemoteMedio,
       (local, remote) => local.updated > Date.parse(remote.updated_at));
+    // La tabla `inversiones` es nueva: si todavía no corriste el SQL, esto
+    // devuelve error y la app sigue andando con el módulo vacío en vez de
+    // romper el pull entero de las demás tablas.
+    if (invR?.data) mergeListPull('inversiones', KEYS.inversiones, invR.data, fromRemoteInversion, toRemoteInversion);
+    else if (invR?.error) console.warn('[sync] inversiones:', invR.error.message, '— ¿falta correr supabase/inversiones-setup.sql?');
   } catch (err) {
     // Offline o timeout es esperable y la app sigue andando con lo local; lo
     // logueamos igual para poder distinguirlo de un error real del servidor.
@@ -209,6 +216,7 @@ export async function initSync(onRemoteChange) {
   suscribirLista('recurrentes', KEYS.recurrentes, fromRemoteRecurrente, 'recurrentes');
   suscribirLista('ahorros', KEYS.ahorros, fromRemoteAhorro, 'ahorros');
   suscribirLista('medios_pago', KEYS.medios, fromRemoteMedio, 'medios_pago');
+  suscribirLista('inversiones', KEYS.inversiones, fromRemoteInversion, 'inversiones');
 }
 
 // --- Gastos: [{ id, monto, descripcion, categoria, fecha, ts }] ---
@@ -223,6 +231,9 @@ const toRemoteGasto = (g) => ({
   tarjeta: g.tarjeta || null,
   moneda: g.moneda || 'ARS',
   fecha: g.fecha,
+  // null = gasto propio. 'pendiente'/'cobrado' = lo pagaste por otro.
+  reintegro: g.reintegro || null,
+  reintegro_de: g.reintegro_de || null,
   created_at: new Date(g.ts).toISOString(),
 });
 const fromRemoteGasto = (r) => ({
@@ -233,6 +244,8 @@ const fromRemoteGasto = (r) => ({
   tarjeta: r.tarjeta || null,
   moneda: r.moneda || 'ARS',   // los gastos viejos vienen sin moneda: son pesos
   fecha: r.fecha,
+  reintegro: r.reintegro || null,
+  reintegro_de: r.reintegro_de || '',
   ts: Date.parse(r.created_at),
 });
 
@@ -393,6 +406,17 @@ export function updateCuotaEstado(id, estado) {
   push(supabase.from('cuotas').update({ estado }).eq('id', id), 'cuotas update estado');
 }
 
+/**
+ * Cambios sobre una cuota ya cargada. Lo usa el circuito de "ya pagué":
+ * avanzar `cuota_actual` y correr `fecha_primer_venc` un mes es lo que hace
+ * que la deuda baje de verdad y no sólo por el paso del calendario.
+ */
+export function updateCuota(id, cambios) {
+  const all = getCuotas().map((c) => (c.id === id ? { ...c, ...cambios } : c));
+  write(KEYS.cuotas, all);
+  push(supabase.from('cuotas').update(cambios).eq('id', id), 'cuotas update');
+}
+
 // --- Recurrentes: ingresos, gastos fijos y suscripciones ---
 // Un renglón por concepto que se repite todos los meses. `historial` guarda
 // cuánto valió cada mes ({"2026-07": 480000}), que es lo que después permite
@@ -487,6 +511,68 @@ export function addAhorro(mov) {
 export function removeAhorro(id) {
   write(KEYS.ahorros, getAhorros().filter((a) => a.id !== id));
   push(supabase.from('ahorros').delete().eq('id', id), 'ahorros delete');
+}
+
+// --- Inversiones: operaciones, no saldo ---
+// Una fila por operación del broker. La distinción que importa: `bruto` es lo
+// que quedó invertido (cantidad × precio) y `neto` lo que salió de tu caja
+// (bruto + comisiones + gastos). La diferencia es costo de transacción, y es
+// plata que no vuelve — por eso se guarda separada en vez de sumarla al costo.
+
+const toRemoteInversion = (i) => ({
+  id: i.id,
+  fecha: i.fecha,
+  tipo: i.tipo,
+  instrumento: i.instrumento,
+  clase: i.clase || null,
+  cantidad: i.cantidad,
+  precio_unitario: i.precio_unitario,
+  moneda: i.moneda || 'ARS',
+  comisiones: i.comisiones || 0,
+  gastos_op: i.gastos_op || 0,
+  broker: i.broker || null,
+  nota: i.nota || null,
+  tesis: i.tesis || null,
+  precio_objetivo: i.precio_objetivo ?? null,
+  fecha_objetivo: i.fecha_objetivo || null,
+  invalidacion: i.invalidacion || null,
+  created_at: new Date(i.ts).toISOString(),
+});
+const fromRemoteInversion = (r) => ({
+  id: r.id,
+  fecha: r.fecha,
+  tipo: r.tipo,
+  instrumento: r.instrumento,
+  clase: r.clase || '',
+  cantidad: Number(r.cantidad),
+  precio_unitario: Number(r.precio_unitario),
+  moneda: r.moneda || 'ARS',
+  comisiones: Number(r.comisiones) || 0,
+  gastos_op: Number(r.gastos_op) || 0,
+  broker: r.broker || '',
+  nota: r.nota || '',
+  tesis: r.tesis || '',
+  precio_objetivo: r.precio_objetivo != null ? Number(r.precio_objetivo) : null,
+  fecha_objetivo: r.fecha_objetivo || '',
+  invalidacion: r.invalidacion || '',
+  ts: Date.parse(r.created_at),
+});
+
+export function getInversiones() {
+  return read(KEYS.inversiones, []);
+}
+
+export function addInversion(op) {
+  const all = getInversiones();
+  all.push(op);
+  write(KEYS.inversiones, all);
+  push(supabase.from('inversiones').upsert(toRemoteInversion(op), { onConflict: 'id' }), 'inversiones upsert');
+  return op;
+}
+
+export function removeInversion(id) {
+  write(KEYS.inversiones, getInversiones().filter((i) => i.id !== id));
+  push(supabase.from('inversiones').delete().eq('id', id), 'inversiones delete');
 }
 
 // --- Medios de pago: bancos + tarjetas, con día de cierre y vencimiento ---

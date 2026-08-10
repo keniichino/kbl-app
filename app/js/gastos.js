@@ -1,6 +1,6 @@
 // ====== Módulo Gastos — carga en 5 segundos ======
-import { getGastos, addGasto, removeGasto } from './store.js';
-import { confirmar } from './dialog.js';
+import { getGastos, addGasto, removeGasto, updateGasto } from './store.js';
+import { confirmar, pedirTexto } from './dialog.js';
 import { equivalente, casaActual, siguienteCasa, onCotizacion } from './cotizacion.js';
 import { clasificar } from './catalogo.js';
 import { mediosCredito } from './medios-credito.js';
@@ -71,8 +71,10 @@ function render() {
   // Total del mes. Pesos y dólares NO se suman en el número grande: son monedas
   // distintas. Los dólares van en su propia línea, con el equivalente en pesos
   // al lado (a la cotización elegida) para que el orden de magnitud se entienda.
-  const enPesos = delMes.filter((g) => g.moneda !== 'USD');
-  const enDolares = delMes.filter((g) => g.moneda === 'USD');
+  // Lo que pagaste por otro no entra en tu total: es un adelanto, no un gasto.
+  const propios = delMes.filter((g) => !g.reintegro);
+  const enPesos = propios.filter((g) => g.moneda !== 'USD');
+  const enDolares = propios.filter((g) => g.moneda === 'USD');
   const totalUsd = enDolares.reduce((a, g) => a + g.monto, 0);
   $('#gasto-total').textContent = fmtARS.format(enPesos.reduce((a, g) => a + g.monto, 0));
   const elUsd = $('#gasto-total-usd');
@@ -102,14 +104,21 @@ function render() {
       html += `<div class="gasto-dia">${etiquetaDia(g.fecha)}</div>`;
     }
     const tk = medios.find((t) => t.key === g.tarjeta);
+    const rein = g.reintegro;
     html += `
-      <div class="gasto-item">
+      <div class="gasto-item${rein ? ' gasto-item--ajeno' : ''}">
         <span class="gasto-emoji">${emojiDe(g.categoria)}</span>
         <div class="gasto-item-mid">
           <span class="gasto-desc">${escapar(g.descripcion) || (CATEGORIAS.find((c) => c.key === g.categoria)?.label ?? 'Gasto')}</span>
           ${tk ? `<span class="gasto-tarjeta-badge">${tk.emoji} ${tk.nombre}</span>` : ''}
+          ${rein ? `<span class="gasto-ajeno-badge gasto-ajeno-badge--${rein}">${
+            rein === 'pendiente' ? '🤝 te lo debe' : '✓ ya te lo devolvió'
+          }${g.reintegro_de ? ` ${escapar(g.reintegro_de)}` : ''}</span>` : ''}
         </div>
-        <span class="gasto-monto${g.moneda === 'USD' ? ' es-usd' : ''}">${fmt(g.monto, g.moneda)}</span>
+        <span class="gasto-monto${g.moneda === 'USD' ? ' es-usd' : ''}${rein ? ' gasto-monto--ajeno' : ''}">${fmt(g.monto, g.moneda)}</span>
+        <button class="gasto-ajeno" data-id="${g.id}" title="${
+          rein ? 'Cambiar estado del reintegro' : 'Lo pagué por otro'
+        }" aria-label="Marcar como pagado por otro">🤝</button>
         <button class="gasto-borrar" data-id="${g.id}" aria-label="Borrar">✕</button>
       </div>`;
   }
@@ -278,6 +287,28 @@ export function initGastos() {
   $('#gasto-monto').addEventListener('keydown', (e) => { if (e.key === 'Enter') agregar(); });
 
   $('#gastos-lista').addEventListener('click', async (e) => {
+    // Ciclo del reintegro: propio → te lo deben → ya te lo devolvió → propio.
+    const btnAjeno = e.target.closest('.gasto-ajeno');
+    if (btnAjeno) {
+      const g = getGastos().find((x) => x.id === btnAjeno.dataset.id);
+      if (!g) return;
+      if (!g.reintegro) {
+        const quien = await pedirTexto({
+          titulo: '¿Por quién lo pagaste?',
+          mensaje: 'Sale de tu caja pero no es tu gasto: deja de contar en tu total y aparece en "Te deben" hasta que te lo devuelvan.',
+          placeholder: 'Papá, Juan, la oficina…',
+          accion: 'Marcar',
+        });
+        if (quien === null) return;
+        updateGasto(g.id, { reintegro: 'pendiente', reintegro_de: quien });
+      } else if (g.reintegro === 'pendiente') {
+        updateGasto(g.id, { reintegro: 'cobrado' });
+      } else {
+        updateGasto(g.id, { reintegro: null, reintegro_de: null });
+      }
+      return render();
+    }
+
     const btn = e.target.closest('.gasto-borrar');
     if (!btn) return;
     const ok = await confirmar({ titulo: '¿Borrar este gasto?', accion: 'Borrar', destructivo: true });

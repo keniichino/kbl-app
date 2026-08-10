@@ -17,8 +17,10 @@
 
 import {
   getGastos, getCuotas, getRecurrentes, upsertRecurrente, removeRecurrente,
-  getAhorros, addAhorro, updateGasto,
+  getAhorros, addAhorro, updateGasto, getInversiones,
 } from './store.js';
+import { initInversiones, renderInversiones, renderTesis } from './inversiones.js';
+import { estadoMercado, renderMercado } from './mercado.js';
 import { aPesos, casaActual, siguienteCasa, onCotizacion, ahorroVsTarjeta } from './cotizacion.js';
 import { confirmar } from './dialog.js';
 import { detectar, descartar } from './detecciones.js';
@@ -33,6 +35,7 @@ import {
   cero, sumar, masMontos, hayUsd,
   MEDIOS, medioDe, TIPOS,
   vigenteEn, montoEn, contexto, fotoDelMes, deudaPendiente, hitosDeAumento,
+  indicadores, ritmoDisponible, pendientesDeReintegro,
 } from './fincore.js';
 
 const $ = (sel) => document.querySelector(sel);
@@ -63,6 +66,7 @@ let base = cfg().base === 'consumo' ? 'consumo' : 'caja';
 let mesSel = MES_HOY;
 let abiertos = new Set();   // filas expandidas
 let editando = null;        // id del recurrente con el monto en edición
+let mesDeuda = MES_HOY;     // mes cuyo detalle de cuotas se está mirando
 
 /** Foto del mes con las filas ya ordenadas por peso, listas para pintar. */
 function foto(mes, ctx) {
@@ -207,7 +211,8 @@ function renderHero(foto, previa) {
           <span class="fin-hero-key">${base === 'caja' ? 'Sale' : 'Consumís'} ${delta(total, previa ? equiv(previa.egreso) : 0)}</span>
           <div class="fin-hero-val">${fmtARS.format(foto.egreso.ars)}</div>
           ${hayUsd(foto.egreso) ? `<div class="fin-hero-usd">+ ${fmtUSD.format(foto.egreso.usd)}
-            <span class="cotiz-eq" role="button" tabindex="0" title="Tocá para cambiar de cotización">≈ ${fmtARS.format(aPesos(foto.egreso.usd) || 0)} <span class="cotiz-casa">${casaActual().label}</span></span></div>` : ''}
+            ${aPesos(foto.egreso.usd) ? `<span class="cotiz-eq" role="button" tabindex="0" title="Tocá para cambiar de cotización">≈ ${fmtARS.format(aPesos(foto.egreso.usd))} <span class="cotiz-casa">${casaActual().label}</span></span>` : ''}</div>
+            ${aPesos(foto.egreso.usd) ? `<div class="fin-hero-suma">= ${fmtARS.format(equiv(foto.egreso))} en total</div>` : ''}` : ''}
         </div>
       </div>
       <div class="fin-alloc">${segmentos}${libre}</div>
@@ -218,6 +223,23 @@ function renderHero(foto, previa) {
          </span>
        </div>` : ''}
       <div class="fin-desglose">${desglose || '<div class="fin-vacio-inline">Sin movimientos en este mes.</div>'}</div>
+      ${base === 'consumo' && equiv(foto.cuotas) ? `
+        <div class="fin-hero-aparte">
+          <span class="fin-hero-aparte-punto" style="background:var(--fin-cuota)"></span>
+          <span class="fin-hero-aparte-label">Cuotas que pagás este mes</span>
+          <span class="fin-hero-aparte-monto">${plata(foto.cuotas)}</span>
+        </div>
+        <div class="fin-hero-aclara">
+          Va aparte porque son compras de <b>meses anteriores</b>: sumarlas acá contaría dos
+          veces la misma plata (una cuando compraste, otra cuando la pagás).
+          En <b>Caja</b> sí entran, que es lo que realmente sale del bolsillo este mes.
+        </div>` : ''}
+      ${base === 'caja' && equiv(foto.estructuralTarjeta) ? `
+        <div class="fin-hero-aclara">
+          ${fmtARS.format(equiv(foto.estructuralTarjeta))} de tus fijos y suscripciones los cobra el resumen
+          de la tarjeta, así que están adentro de <b>Cuotas</b> y no en su propia línea.
+          En <b>Consumo</b> los ves separados.
+        </div>` : ''}
     </div>`;
 }
 
@@ -266,9 +288,9 @@ function renderKpis(fotos, ctx) {
   return `<div class="fin-tiles">
     ${tile({
       label: 'Fijo + suscrip.',
-      valor: fmtCorto(equiv(foto.estructural)),
-      sub: `${delta(equiv(foto.estructural), previa ? equiv(previa.estructural) : 0)} ${ing ? `<span class="fin-tile-nota">${pct(equiv(foto.estructural) / ing)} del ingreso</span>` : ''}`,
-      spark: sparkline(fotos.map((f) => equiv(f.estructural)), 'var(--fin-fijo)'),
+      valor: fmtCorto(equiv(foto.estructuralTotal)),
+      sub: `${delta(equiv(foto.estructuralTotal), previa ? equiv(previa.estructuralTotal) : 0)} ${ing ? `<span class="fin-tile-nota">${pct(equiv(foto.estructuralTotal) / ing)} del ingreso</span>` : ''}`,
+      spark: sparkline(fotos.map((f) => equiv(f.estructuralTotal)), 'var(--fin-fijo)'),
       color: 'var(--fin-fijo)',
     })}
     ${tile({
@@ -297,11 +319,97 @@ function renderKpis(fotos, ctx) {
   </div>`;
 }
 
+/**
+ * Cuadro de indicadores. No repite montos: muestra los COCIENTES, que es lo
+ * que se puede comparar contra un estándar y contra vos mismo del mes pasado.
+ * Cada uno trae su semáforo y una línea que explica qué se considera sano —
+ * sin eso, un número suelto como "0,4×" no le dice nada a nadie.
+ */
+function renderIndicadores(fotos, ctx) {
+  const ind = indicadores(mesSel, ctx, ctx.foto, equiv, { fotos });
+  const conDatos = ind.filter((i) => i.valor != null && isFinite(i.valor));
+  if (!conDatos.length) {
+    return `<div class="fin-card">
+      <div class="fin-card-head"><h2>Indicadores</h2></div>
+      <div class="fin-vacio">
+        <p>Faltan datos para calcular los ratios.</p>
+        <p class="fin-vacio-sub">Con el ingreso y los gastos fijos cargados aparecen acá:
+          carga de deuda, cobertura, tasa de ahorro y cuántos meses aguantás sin ingreso.</p>
+      </div>
+    </div>`;
+  }
+
+  const abierto = abiertos.has('indicadores');
+  return `
+    <div class="fin-card">
+      <div class="fin-card-head">
+        <h2>Indicadores</h2>
+        <button class="fin-link" data-accion="toggle" data-id="indicadores">
+          ${abierto ? 'Ocultar la letra chica' : '¿Qué significan?'}
+        </button>
+      </div>
+      <div class="fin-indicadores">
+        ${ind.map((i) => `
+          <div class="fin-ind fin-ind--${i.estado || 'sin'}">
+            <div class="fin-ind-label">${i.label}</div>
+            <div class="fin-ind-valor">${i.texto}</div>
+            <div class="fin-ind-detalle">${i.detalle}</div>
+            ${abierto ? `<div class="fin-ind-ayuda">${i.ayuda}</div>` : ''}
+          </div>`).join('')}
+      </div>
+    </div>`;
+}
+
+/** El número más accionable del mes: cuánto te queda por día. */
+function renderRitmo(ctx) {
+  if (mesSel !== MES_HOY) return '';           // sólo tiene sentido en el mes corriente
+  const r = ritmoDisponible(ctx.foto, equiv);
+  if (!r) return '';
+  const enRojo = r.porDia <= 0;
+  const ritmoAlto = r.gastadoPorDia > r.porDia && !enRojo;
+  const tope = Math.max(r.porDia, r.gastadoPorDia, 1);
+
+  return `
+    <div class="fin-ritmo ${enRojo ? 'fin-ritmo--rojo' : ''}">
+      <div class="fin-ritmo-head">
+        <div>
+          <div class="fin-ritmo-key">Te queda por día</div>
+          <div class="fin-ritmo-val">${enRojo ? fmtARS.format(0) : fmtARS.format(r.porDia)}</div>
+        </div>
+        <div class="fin-ritmo-meta">
+          <div>${fmtARS.format(Math.max(0, r.libre))} libres</div>
+          <div>${r.restan} día${r.restan !== 1 ? 's' : ''} hasta fin de mes</div>
+        </div>
+      </div>
+      <div class="fin-ritmo-barras">
+        <div class="fin-ritmo-fila">
+          <span class="fin-ritmo-etq">Podés</span>
+          <span class="fin-ritmo-track"><i class="fin-ritmo-bar fin-ritmo-bar--puede"
+            style="width:${Math.max(2, (Math.max(0, r.porDia) / tope) * 100).toFixed(1)}%"></i></span>
+          <span class="fin-ritmo-num">${fmtARS.format(Math.max(0, r.porDia))}</span>
+        </div>
+        <div class="fin-ritmo-fila">
+          <span class="fin-ritmo-etq">Venís</span>
+          <span class="fin-ritmo-track"><i class="fin-ritmo-bar ${ritmoAlto || enRojo ? 'fin-ritmo-bar--alto' : 'fin-ritmo-bar--ok'}"
+            style="width:${Math.max(2, (r.gastadoPorDia / tope) * 100).toFixed(1)}%"></i></span>
+          <span class="fin-ritmo-num">${fmtARS.format(r.gastadoPorDia)}</span>
+        </div>
+      </div>
+      <div class="fin-ritmo-nota">
+        ${enRojo
+          ? 'Ya comprometiste todo lo que entra. Cada peso de acá a fin de mes sale de ahorros o de la tarjeta del mes que viene.'
+          : ritmoAlto
+            ? `A tu ritmo actual te faltarían <b>${fmtARS.format((r.gastadoPorDia - r.porDia) * r.restan)}</b> para llegar.`
+            : 'Vas dentro de lo que te podés permitir.'}
+      </div>
+    </div>`;
+}
+
 /** Filas de conceptos (ingresos, fijos o suscripciones) con su historial. */
 function renderFilas(filas, ctx, { tipo }) {
   const meses = ctx.meses;
   const esIngreso = tipo === 'ingreso';
-  return filas.map(({ r, monto }) => {
+  return filas.map(({ r, monto, porTarjeta }) => {
     const serie = meses.map((m) => (vigenteEn(r, m, ctx) ? montoEn(r, m, ctx) : 0));
     const prev = serie.at(-2) || 0;
     const abierto = abiertos.has(r.id);
@@ -326,6 +434,9 @@ function renderFilas(filas, ctx, { tipo }) {
           ${r.dia ? `<span>${esIngreso ? 'cobrás el' : 'día'} ${r.dia}</span>` : ''}
           ${medio ? `<span>${medio.emoji} ${medio.label}</span>` : ''}
           ${r.moneda === 'USD' && aPesos(monto) ? `<span>≈ ${fmtARS.format(aPesos(monto))}</span>` : ''}
+          ${porTarjeta && base === 'caja'
+            ? '<span class="fin-badge fin-badge--tarjeta" title="Lo cobra el resumen de la tarjeta: ya está contado dentro de Cuotas, por eso no se suma otra vez acá">💳 lo paga el resumen</span>'
+            : ''}
         </div>
         ${abierto ? `
           <div class="fin-fila-detalle">
@@ -387,19 +498,30 @@ function renderFijos(foto, ctx) {
       ${foto.filasFijos.length ? `
         <div class="fin-total">
           <span class="fin-total-label">Total fijo</span>
-          <span class="fin-total-delta">${delta(equiv(foto.fijos), totalPrev)}</span>
-          <span class="fin-total-monto">${plata(foto.fijos)}</span>
+          <span class="fin-total-delta">${delta(equiv(foto.fijosTotal), totalPrev)}</span>
+          <span class="fin-total-monto">${plata(foto.fijosTotal)}</span>
         </div>
+        ${hayUsd(foto.fijosTotal) && aPesos(foto.fijosTotal.usd) ? `
+          <div class="fin-total-eq">
+            <span class="fin-total-eq-label">Todo junto, a ${casaActual().label} de hoy</span>
+            <span class="fin-total-eq-monto cotiz-eq" role="button" tabindex="0"
+                  title="Tocá para cambiar de cotización">${fmtARS.format(equiv(foto.fijosTotal))}</span>
+          </div>` : ''}
+        ${equiv(foto.fijosTarjeta) ? `
+          <div class="fin-subtotal">
+            <span>De eso, <b>${fmtARS.format(equiv(foto.fijosTarjeta))}</b> lo cobra el resumen de la tarjeta</span>
+            <span class="fin-subtotal-nota">ya contado en Cuotas — no se suma dos veces</span>
+          </div>` : ''}
         <div class="fin-nota">
-          ${ing ? `Te comés <b>${pct(equiv(foto.fijos) / ing)}</b> del ingreso antes de gastar un peso. ` : ''}
-          Anualizado: <b>${fmtARS.format(equiv(foto.fijos) * 12)}</b>.
+          ${ing ? `Te comés <b>${pct(equiv(foto.fijosTotal) / ing)}</b> del ingreso antes de gastar un peso. ` : ''}
+          Anualizado: <b>${fmtARS.format(equiv(foto.fijosTotal) * 12)}</b>.
         </div>` : ''}
     </div>`;
 }
 
 function renderSubs(foto, ctx) {
   const ing = equiv(foto.ingresos);
-  const totalUsd = foto.subs.usd;
+  const totalUsd = foto.subsTotal.usd;
   const comp = totalUsd ? ahorroVsTarjeta(totalUsd) : null;
   const cuerpo = foto.filasSubs.length
     ? renderFilas(foto.filasSubs, ctx, { tipo: 'suscripcion' })
@@ -418,11 +540,22 @@ function renderSubs(foto, ctx) {
       ${foto.filasSubs.length ? `
         <div class="fin-total">
           <span class="fin-total-label">Por mes</span>
-          <span class="fin-total-delta">${delta(equiv(foto.subs), ctx.previa ? equiv(ctx.previa.subs) : 0)}</span>
-          <span class="fin-total-monto">${plata(foto.subs)}</span>
+          <span class="fin-total-delta">${delta(equiv(foto.subsTotal), ctx.previa ? equiv(ctx.previa.subsTotal) : 0)}</span>
+          <span class="fin-total-monto">${plata(foto.subsTotal)}</span>
         </div>
+        ${hayUsd(foto.subsTotal) && aPesos(foto.subsTotal.usd) ? `
+          <div class="fin-total-eq">
+            <span class="fin-total-eq-label">Todo junto, a ${casaActual().label} de hoy</span>
+            <span class="fin-total-eq-monto cotiz-eq" role="button" tabindex="0"
+                  title="Tocá para cambiar de cotización">${fmtARS.format(equiv(foto.subsTotal))}</span>
+          </div>` : ''}
+        ${equiv(foto.subsTarjeta) ? `
+          <div class="fin-subtotal">
+            <span>De eso, <b>${fmtARS.format(equiv(foto.subsTarjeta))}</b> lo cobra el resumen de la tarjeta</span>
+            <span class="fin-subtotal-nota">ya contado en Cuotas — no se suma dos veces</span>
+          </div>` : ''}
         <div class="fin-nota">
-          En un año son <b>${fmtARS.format(equiv(foto.subs) * 12)}</b>${ing ? ` · ${pct(equiv(foto.subs) / ing)} del ingreso` : ''}.
+          En un año son <b>${fmtARS.format(equiv(foto.subsTotal) * 12)}</b>${ing ? ` · ${pct(equiv(foto.subsTotal) / ing)} del ingreso` : ''}.
           ${comp ? `<br>Los ${fmtUSD.format(totalUsd)} en dólares te salen <b>${fmtARS.format(comp.propio)}</b> comprando ${casaActual().label};
             si los paga la tarjeta, ${fmtARS.format(comp.conTarjeta)} → <b class="fin-ok">ahorrás ${fmtARS.format(comp.ahorro)}</b>.` : ''}
         </div>` : ''}
@@ -439,6 +572,10 @@ function renderDeuda(ctx) {
       <p class="fin-vacio-sub">Nada comprometido para los meses que vienen.</p></div>
     </div>`;
   }
+
+  // Si el mes elegido quedó fuera de la ventana (cambiaste de mes, o se pagó
+  // la última cuota), vuelve al primero con deuda en vez de mostrar vacío.
+  if (!futuros.some(([m]) => m === mesDeuda)) mesDeuda = futuros[0][0];
 
   const saldo = deudaPendiente(mesSel, cal);
   const pico = futuros.reduce((a, b) => (equiv(b[1]) > equiv(a[1]) ? b : a));
@@ -459,12 +596,40 @@ function renderDeuda(ctx) {
       </div>
       <div class="fin-mini-barras">
         ${futuros.slice(0, 8).map(([m, v]) => `
-          <div class="fin-mini-col" title="${labelMes(m)}: ${fmtARS.format(equiv(v))}">
+          <button class="fin-mini-col ${m === mesDeuda ? 'fin-mini-col--sel' : ''}"
+                  data-accion="ver-mes-deuda" data-mes="${m}"
+                  title="${labelMes(m)}: ${fmtARS.format(equiv(v))}">
             <div class="fin-mini-plot"><div class="fin-mini-bar ${m === pico[0] ? 'fin-mini-bar--pico' : ''}"
                  style="height:${((equiv(v) / tope) * 100).toFixed(1)}%"></div></div>
             <div class="fin-mini-mes">${labelMes(m, { corto: true })}</div>
-          </div>`).join('')}
+            <div class="fin-mini-monto">${fmtCorto(equiv(v))}</div>
+          </button>`).join('')}
       </div>
+      ${(() => {
+        // Detalle del mes elegido: qué compras componen esa barra. Antes el
+        // monto sólo estaba en el `title` del hover, que en el celular no
+        // existe — la pregunta "¿cuánto pago en octubre y por qué?" no tenía
+        // respuesta en ninguna pantalla.
+        const sel = cal.get(mesDeuda);
+        if (!sel || !sel.items?.length) return '';
+        const items = sel.items.slice().sort((a, b) => b.monto - a.monto);
+        const ingMes = equiv(ctx.foto.ingresos);
+        return `
+          <div class="fin-deuda-mes">
+            <div class="fin-deuda-mes-head">
+              <span>En <b>${labelMes(mesDeuda)}</b> pagás</span>
+              <span class="fin-deuda-mes-total">${plata(sel)}${
+                ingMes ? `<span class="fin-deuda-mes-pct">${pct(equiv(sel) / ingMes)} del ingreso</span>` : ''}</span>
+            </div>
+            ${items.map((i) => `
+              <div class="fin-deuda-item">
+                <span class="fin-deuda-item-desc">${escapar(i.desc)}
+                  <span class="fin-deuda-item-cuota">cuota ${i.n} de ${i.total}${
+                    i.n === i.total ? ' · última' : ''}</span></span>
+                <span class="fin-deuda-item-monto">${fmtMoneda(i.monto, i.moneda)}</span>
+              </div>`).join('')}
+          </div>`;
+      })()}
       <div class="fin-nota">
         Mes más pesado: <b>${labelMes(pico[0])}</b> con ${fmtARS.format(equiv(pico[1]))}.
         La última cuota vence en <b>${labelMes(ultimo[0])}</b>: desde ${labelMes(addMes(ultimo[0], 1))} no arrastrás deuda.
@@ -519,6 +684,53 @@ function renderAhorro(fotos, ctx) {
             </div>`).join('')}
         </div>` : `<div class="fin-vacio"><p>Sin movimientos de ahorro.</p>
           <p class="fin-vacio-sub">Registrá cada vez que apartás plata (o comprás dólares) y el panel te dice qué tasa de ahorro sostenés.</p></div>`}
+    </div>`;
+}
+
+/**
+ * Plata que adelantaste por otros. No es un gasto tuyo ni un ahorro: es un
+ * préstamo sin registrar que hasta ahora desaparecía dentro de "variable" y
+ * hacía parecer caros meses que no lo fueron.
+ */
+function renderReintegros(ctx) {
+  const grupos = pendientesDeReintegro(ctx.gastos);
+  const cobradoMes = equiv(ctx.foto.ajenoCobrado);
+  if (!grupos.length && !cobradoMes) return '';
+
+  const total = grupos.reduce((a, g) => a + equiv(g.total), 0);
+  return `
+    <div class="fin-card">
+      <div class="fin-card-head">
+        <h2>Te deben</h2>
+        <span class="fin-card-sub">plata que pusiste vos</span>
+      </div>
+      ${grupos.length ? `
+        <div class="fin-duo">
+          <div><div class="fin-duo-key">Pendiente</div>
+            <div class="fin-duo-val fin-mal">${fmtARS.format(total)}</div></div>
+          <div><div class="fin-duo-key">De</div>
+            <div class="fin-duo-val">${grupos.length} ${grupos.length === 1 ? 'persona' : 'personas'}</div></div>
+        </div>
+        <div class="fin-deudores">
+          ${grupos.map((g) => `
+            <div class="fin-deudor">
+              <span class="fin-deudor-quien">${escapar(g.quien)}
+                <span class="fin-deudor-desde">hace ${g.dias} día${g.dias !== 1 ? 's' : ''} · ${g.items.length} ${g.items.length === 1 ? 'gasto' : 'gastos'}</span>
+              </span>
+              <span class="fin-deudor-monto">${plata(g.total)}</span>
+            </div>
+            ${g.items.slice(0, 3).map((it) => `
+              <div class="fin-deudor-item">
+                <span>${escapar(it.descripcion) || 'Gasto'} · ${labelMes(it.fecha.slice(0, 7), { corto: true })} ${it.fecha.slice(8)}</span>
+                <span>${fmtMoneda(it.monto, it.moneda)}</span>
+              </div>`).join('')}
+          `).join('')}
+        </div>` : ''}
+      <div class="fin-nota">
+        ${cobradoMes ? `Este mes te devolvieron <b class="fin-ok">${fmtARS.format(cobradoMes)}</b>. ` : ''}
+        Nada de esto cuenta como tu gasto${grupos.length ? ' — pero si no vuelve, en algún momento lo es' : ''}.
+        Se marca con 🤝 en cada gasto.
+      </div>
     </div>`;
 }
 
@@ -710,8 +922,7 @@ async function accionAlerta(hacer, id) {
     }
     if (a.accion.tipo === 'crear-recurrente') {
       const d = a.accion.datos;
-      upsertRecurrente({
-        id: crypto.randomUUID(),
+      upsertRecurrente(fusionarConcepto({
         tipo: d.tipo,
         nombre: d.nombre,
         categoria: '',
@@ -725,10 +936,38 @@ async function accionAlerta(hacer, id) {
         coincide: d.coincide,
         historial: { [MES_HOY]: d.monto },
         created_at: new Date().toISOString(),
-      });
+      }));
       descartar(id);
       return render();
     }
+  }
+}
+
+/**
+ * Mercado. Se pinta aparte del render principal porque depende de una llamada
+ * de red: si esperara, todo el panel quedaría en blanco hasta que responda una
+ * API que además es de terceros y puede estar caída.
+ */
+let mercadoCache = null;
+async function pintarMercado(ctx, forzar = false) {
+  const el = $('#fin-mercado');
+  if (!el) return;
+  // El "te quedan libres" conecta el precio con tu realidad: sin eso es una
+  // cotización más, de las que hay en cualquier lado.
+  const r = ritmoDisponible(ctx.foto, equiv);
+  const libre = r && r.libre > 0 ? r.libre : null;
+
+  if (mercadoCache && !forzar) {
+    el.innerHTML = renderMercado(mercadoCache, { libre });
+    return;
+  }
+  el.innerHTML = `<div class="fin-card"><div class="fin-card-head"><h2>Mercado</h2></div>
+    <div class="fin-vacio-inline">Buscando precios…</div></div>`;
+  try {
+    mercadoCache = await estadoMercado({ forzar });
+    el.innerHTML = renderMercado(mercadoCache, { libre });
+  } catch (e) {
+    el.innerHTML = renderMercado({ error: String(e.message || e), activos: [] });
   }
 }
 
@@ -741,6 +980,7 @@ function render() {
     recurrentes: getRecurrentes(),
     ahorros: getAhorros(),
     medios: mediosCredito(),
+    inversiones: getInversiones(),
   });
 
   const meses = Array.from({ length: 6 }, (_, i) => addMes(mesSel, i - 5));
@@ -764,11 +1004,17 @@ function render() {
 
   $('#fin-hero').innerHTML = renderHero(ctx.foto, ctx.previa);
   $('#fin-kpis').innerHTML = renderKpis(fotos, ctx);
+  $('#fin-ritmo').innerHTML = renderRitmo(ctx);
+  $('#fin-indicadores').innerHTML = renderIndicadores(fotos, ctx);
   $('#fin-ingresos').innerHTML = renderIngresos(ctx.foto, ctx);
   $('#fin-fijos').innerHTML = renderFijos(ctx.foto, ctx);
   $('#fin-subs').innerHTML = renderSubs(ctx.foto, ctx);
   $('#fin-deuda').innerHTML = renderDeuda(ctx);
   $('#fin-ahorro').innerHTML = renderAhorro(fotos, ctx);
+  $('#fin-reintegros').innerHTML = renderReintegros(ctx);
+  renderInversiones();
+  renderTesis();
+  pintarMercado(ctx);
   $('#fin-medios').innerHTML = renderMediosCredito();
   $('#fin-flujo').innerHTML = renderFlujo(fotos);
   $('#fin-proyeccion').innerHTML = renderProyeccion(ctx);
@@ -795,6 +1041,35 @@ let medioNuevo = null;
 let monedaAhorro = 'ARS';
 let tipoAhorro = 'aporte';
 
+/**
+ * Resuelve sobre qué fila hay que escribir. Si ya existe un concepto con el
+ * mismo nombre, se escribe encima en vez de crear otro.
+ *
+ * Hacía falta porque `upsertRecurrente` deduplica **por id**, y los dos lugares
+ * que dan de alta un concepto generaban un `randomUUID()` nuevo cada vez: el
+ * "upsert" era siempre un insert. Alcanzaba con que la alerta reapareciera
+ * (se descarta en local, así que otro dispositivo la vuelve a mostrar) para
+ * que cada toque dejara un duplicado. Así aparecieron tres "Claude".
+ *
+ * El historial previo se conserva y sólo se pisa el mes que llega: son montos
+ * mes a mes que no se pueden reconstruir. El `estado` también se respeta —
+ * un concepto que pausaste a propósito no se reactiva solo.
+ */
+function fusionarConcepto(datos) {
+  const nombre = (datos.nombre || '').trim().toLowerCase();
+  const previo = getRecurrentes().find((r) => (r.nombre || '').trim().toLowerCase() === nombre);
+  if (!previo) return { ...datos, id: crypto.randomUUID() };
+  return {
+    ...previo,
+    ...datos,
+    id: previo.id,
+    created_at: previo.created_at,
+    estado: previo.estado,
+    coincide: datos.coincide || previo.coincide,
+    historial: { ...previo.historial, ...datos.historial },
+  };
+}
+
 function guardarConcepto() {
   const nombre = $('#fin-nombre').value.trim();
   const monto = parseMonto($('#fin-monto').value);
@@ -802,8 +1077,7 @@ function guardarConcepto() {
   if (!monto || monto <= 0) return $('#fin-monto').focus();
   const dia = parseInt($('#fin-dia').value, 10);
 
-  upsertRecurrente({
-    id: crypto.randomUUID(),
+  upsertRecurrente(fusionarConcepto({
     tipo: tipoNuevo,
     nombre,
     categoria: '',
@@ -815,7 +1089,7 @@ function guardarConcepto() {
     coincide: '',
     historial: { [MES_HOY]: monto },
     created_at: new Date().toISOString(),
-  });
+  }));
 
   $('#fin-nombre').value = '';
   $('#fin-monto').value = '';
@@ -1020,6 +1294,15 @@ export function initPanel() {
     if (!btn) return;
     const { accion, id } = btn.dataset;
     if (accion === 'ir-cuotas') return document.querySelector('.tab[data-view="cuotas"]').click();
+    if (accion === 'ver-mes-deuda') { mesDeuda = btn.dataset.mes; return render(); }
+    if (accion === 'refrescar-mercado') {
+      const ctxA = contexto({
+        gastos: getGastos(), cuotas: getCuotas(), recurrentes: getRecurrentes(),
+        ahorros: getAhorros(), medios: mediosCredito(), inversiones: getInversiones(),
+      });
+      ctxA.foto = fotoDelMes(mesSel, ctxA, base);
+      return pintarMercado(ctxA, true);
+    }
     accionFila(accion, id);
   });
 
@@ -1030,6 +1313,16 @@ export function initPanel() {
     $('#fin-form-concepto').setAttribute('open', '');
     $('#fin-form-concepto').scrollIntoView({ behavior: 'smooth', block: 'center' });
     $('#fin-nombre').focus();
+  });
+
+  initInversiones();
+  // Una operación nueva mueve indicadores y alertas: se repinta el panel entero.
+  document.addEventListener('kbl:inversion-guardada', () => render());
+  // La meta de ahorro ahora también se toca desde Ajustes.
+  document.addEventListener('kbl:ajustes-cambiaron', () => {
+    const meta = $('#fin-meta-input');
+    if (meta) meta.value = cfg().meta ?? 20;
+    render();
   });
 
   render();

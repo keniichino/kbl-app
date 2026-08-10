@@ -1,8 +1,10 @@
 // ====== Módulo Cuotas ======
-import { getCuotas, addCuota, removeCuota, updateCuotaEstado } from './store.js';
+import { getCuotas, addCuota, removeCuota, updateCuota } from './store.js';
 import { confirmar } from './dialog.js';
 import { equivalente, casaActual, siguienteCasa, onCotizacion, ahorroVsTarjeta, fmtARS0 } from './cotizacion.js';
 import { mediosCredito } from './medios-credito.js';
+import { cuotasVencidasSinPagar, hoyIso, diasEntre, pad2 } from './fincore.js';
+import { generarIcs, descargarIcs, pedirConfigRecordatorio, labelFechaLarga } from './recordatorio.js';
 
 const fmtARS = new Intl.NumberFormat('es-AR', {
   style: 'currency', currency: 'ARS', minimumFractionDigits: 0, maximumFractionDigits: 0,
@@ -36,6 +38,46 @@ function mesKey(fechaIso) {
 function labelMes(yyyy_mm) {
   const [y, m] = yyyy_mm.split('-').map(Number);
   return new Date(y, m - 1, 1).toLocaleDateString('es-AR', { month: 'long', year: 'numeric' });
+}
+
+// ---------- Pagos ----------
+// Hasta ahora la única acción sobre una cuota era "completada", que la saca
+// entera de la lista. No existía "pagué LA CUOTA DE ESTE MES", así que
+// `cuota_actual` nunca avanzaba: la barra decía "2 de 9" para siempre y el
+// saldo sólo bajaba cuando el calendario pasaba de mes. Esto es lo que faltaba.
+
+/** Avanza una cuota un mes. Si era la última, la marca completada. */
+function avanzarCuota(c) {
+  if (c.cuota_actual >= c.cuota_total) {
+    updateCuota(c.id, { estado: 'completada' });
+    return;
+  }
+  updateCuota(c.id, {
+    cuota_actual: c.cuota_actual + 1,
+    fecha_primer_venc: addMeses(c.fecha_primer_venc, 1),
+  });
+}
+
+/** Deshace un pago. Existe porque un toque de más no puede costarte el dato. */
+function retrocederCuota(c) {
+  if (c.cuota_actual <= 1 && c.estado === 'activa') return;
+  updateCuota(c.id, {
+    estado: 'activa',
+    cuota_actual: Math.max(1, c.cuota_actual - (c.estado === 'completada' ? 0 : 1)),
+    fecha_primer_venc: c.estado === 'completada'
+      ? c.fecha_primer_venc
+      : addMeses(c.fecha_primer_venc, -1),
+  });
+}
+
+/** Fecha real de vencimiento de una cuota (día del medio, o el de la cuota). */
+function vencimientoDe(c, medios) {
+  const medio = medios.find((m) => m.key === c.tarjeta);
+  const mes = c.fecha_primer_venc.slice(0, 7);
+  const dia = medio?.diaVencimiento ?? Number(c.fecha_primer_venc.slice(8, 10));
+  const [y, m] = mes.split('-').map(Number);
+  const ultimo = new Date(y, m, 0).getDate();
+  return `${mes}-${pad2(Math.min(dia, ultimo))}`;
 }
 
 function proyectarMeses(cuotas, cuantos = 7) {
@@ -105,6 +147,33 @@ function renderResumen(cuotas, primerMes) {
         → <b class="resumen-ahorro">ahorrás ${fmtARS0(comp.ahorro)}</b>.
       </div>` : '';
 
+  // Un botón de pago por tarjeta: pagás el resumen entero, no cuota por cuota.
+  // Avanza de una todas las cuotas de esa tarjeta que vencen este mes.
+  const medios = mediosCredito();
+  const accionesPorTarjeta = mediosCredito()
+    .filter((t) => porTarjeta[t.key] || porTarjetaUsd[t.key])
+    .map((t) => {
+      const delMes = cuotas.filter((c) => c.estado === 'activa' && c.tarjeta === t.key
+        && c.fecha_primer_venc.slice(0, 7) === primerMes.key);
+      if (!delMes.length) return '';
+      const venc = vencimientoDe(delMes[0], medios);
+      const faltan = diasEntre(hoyIso(), venc);
+      const cuando = faltan === 0 ? 'vence hoy'
+        : faltan > 0 ? `vence en ${faltan} día${faltan > 1 ? 's' : ''}`
+        : `venció hace ${-faltan} día${-faltan > 1 ? 's' : ''}`;
+      return `
+        <div class="resumen-accion ${faltan < 0 ? 'resumen-accion--vencida' : ''}">
+          <div class="resumen-accion-info">
+            <b>${t.emoji} ${escapar(t.nombre)}</b>
+            <span>${labelFechaLarga(venc)} · ${cuando}</span>
+          </div>
+          <div class="resumen-accion-btns">
+            <button class="fin-btn" data-recordar="${t.key}" data-venc="${venc}">🔔 Recordarme</button>
+            <button class="fin-btn fin-btn--ok" data-pagar-tarjeta="${t.key}" data-mes="${primerMes.key}">Ya lo pagué</button>
+          </div>
+        </div>`;
+    }).join('');
+
   el.innerHTML = `
     <div class="cuotas-resumen-wrap">
       <div class="cuotas-proy-title">Próximo resumen · ${primerMes.label}</div>
@@ -116,7 +185,43 @@ function renderResumen(cuotas, primerMes) {
         }</span>
       </div>
       ${bloqueUsd}
+      ${accionesPorTarjeta}
     </div>`;
+}
+
+/** Aviso arriba de todo cuando hay cuotas cuyo vencimiento ya pasó sin marcar. */
+function renderVencidas(cuotas) {
+  const el = $('#cuotas-vencidas');
+  if (!el) return;
+  const medios = mediosCredito();
+  const vencidas = cuotasVencidasSinPagar(cuotas, medios);
+  if (!vencidas.length) { el.innerHTML = ''; return; }
+
+  const porTarjeta = new Map();
+  for (const v of vencidas) {
+    const k = v.cuota.tarjeta;
+    if (!porTarjeta.has(k)) porTarjeta.set(k, { items: [], venc: v.venc, dias: v.diasPasados });
+    porTarjeta.get(k).items.push(v.cuota);
+  }
+
+  el.innerHTML = [...porTarjeta.entries()].map(([tk, g]) => {
+    const t = medios.find((m) => m.key === tk) || { emoji: '💳', nombre: tk };
+    const totalArs = g.items.filter((c) => c.moneda !== 'USD').reduce((a, c) => a + c.monto_cuota, 0);
+    return `
+      <div class="cuotas-vencida">
+        <span class="cuotas-vencida-icono">⏱</span>
+        <div class="cuotas-vencida-cuerpo">
+          <div class="cuotas-vencida-titulo">${t.emoji} ${escapar(t.nombre)} venció hace ${g.dias} día${g.dias > 1 ? 's' : ''}</div>
+          <div class="cuotas-vencida-detalle">
+            ${g.items.length} cuota${g.items.length > 1 ? 's' : ''} por <b>${fmtARS.format(totalArs)}</b>
+            siguen contando como deuda. Si ya pagaste, marcalo: el saldo baja recién ahí.
+          </div>
+          <div class="cuotas-vencida-btns">
+            <button class="fin-btn fin-btn--ok" data-pagar-tarjeta="${tk}" data-mes="${g.venc.slice(0, 7)}">Ya lo pagué</button>
+          </div>
+        </div>
+      </div>`;
+  }).join('');
 }
 
 function render() {
@@ -139,6 +244,7 @@ function render() {
   $('#cuotas-mes-label').textContent = primerMes ? primerMes.label : new Date().toLocaleDateString('es-AR', { month: 'long', year: 'numeric' });
   $('#cuotas-activas-count').textContent = `${activas.length} cuota${activas.length !== 1 ? 's' : ''} activa${activas.length !== 1 ? 's' : ''}`;
 
+  renderVencidas(cuotas);
   renderResumen(cuotas, proyeccion[0]);
 
   // Proyección mensual
@@ -176,8 +282,11 @@ function render() {
       // 100% recién cuando la marcás completada y sale de la lista.
       const pagadas = Math.max(0, Math.min(c.cuota_total, c.cuota_actual - 1));
       const pct = Math.round((pagadas / c.cuota_total) * 100);
+      const venc = vencimientoDe(c, medios);
+      const faltan = diasEntre(hoyIso(), venc);
+      const esUltima = c.cuota_actual >= c.cuota_total;
       return `
-        <div class="cuota-card">
+        <div class="cuota-card ${faltan < 0 ? 'cuota-card--vencida' : ''}">
           <div class="cuota-card-top">
             <span class="cuota-emoji">${tarjetaEmoji(c.tarjeta)}</span>
             <div class="cuota-info">
@@ -185,14 +294,19 @@ function render() {
               <div class="cuota-sub">${fmt(c.monto_cuota, c.moneda)}/cuota · ${restantes} restante${restantes !== 1 ? 's' : ''} de ${c.cuota_total}</div>
             </div>
             <div class="cuota-actions">
-              <button class="cuota-ok" data-id="${c.id}" title="Marcar completada">✓</button>
+              ${pagadas > 0 ? `<button class="cuota-undo" data-id="${c.id}" title="Deshacer el último pago">↩</button>` : ''}
               <button class="cuota-del" data-id="${c.id}" title="Eliminar">✕</button>
             </div>
           </div>
           <div class="cuota-progress-wrap">
             <div class="cuota-progress-bar" style="width:${pct}%"></div>
           </div>
-          <div class="cuota-progress-label">${pagadas} de ${c.cuota_total} pagadas — próxima ${fmt(c.monto_cuota, c.moneda)}</div>
+          <div class="cuota-pie">
+            <span class="cuota-progress-label">${pagadas} de ${c.cuota_total} pagadas · vence ${labelFechaLarga(venc)}</span>
+            <button class="cuota-pagar" data-id="${c.id}">
+              ${esUltima ? 'Pagué la última' : `Pagué la ${c.cuota_actual}ª`}
+            </button>
+          </div>
         </div>`;
     }).join('');
 }
@@ -273,16 +387,92 @@ export function initCuotas() {
 
   // Acciones en lista
   $('#cuotas-lista').addEventListener('click', async (e) => {
-    const btnOk = e.target.closest('.cuota-ok');
+    const btnPagar = e.target.closest('.cuota-pagar');
+    const btnUndo = e.target.closest('.cuota-undo');
     const btnDel = e.target.closest('.cuota-del');
 
-    if (btnOk) {
-      const ok = await confirmar({ titulo: '¿Marcar como completada?', accion: 'Completar', destructivo: false });
-      if (ok) { updateCuotaEstado(btnOk.dataset.id, 'completada'); render(); }
+    if (btnPagar) {
+      const c = getCuotas().find((x) => x.id === btnPagar.dataset.id);
+      if (!c) return;
+      const esUltima = c.cuota_actual >= c.cuota_total;
+      const ok = await confirmar({
+        titulo: esUltima ? '¿Pagaste la última cuota?' : `¿Pagaste la cuota ${c.cuota_actual} de ${c.cuota_total}?`,
+        mensaje: esUltima
+          ? `"${c.descripcion}" sale de la lista y deja de contar como deuda.`
+          : `Baja ${fmt(c.monto_cuota, c.moneda)} del saldo y la próxima pasa a vencer el mes que viene.`,
+        accion: 'Sí, la pagué',
+      });
+      if (ok) { avanzarCuota(c); render(); }
+      return;
+    }
+    if (btnUndo) {
+      const c = getCuotas().find((x) => x.id === btnUndo.dataset.id);
+      if (c) { retrocederCuota(c); render(); }
+      return;
     }
     if (btnDel) {
       const ok = await confirmar({ titulo: '¿Eliminar esta cuota?', accion: 'Eliminar', destructivo: true });
       if (ok) { removeCuota(btnDel.dataset.id); render(); }
+    }
+  });
+
+  // Pagar un resumen entero y generar recordatorios (viven en dos contenedores
+  // distintos, así que la delegación va en la vista completa).
+  $('#view-cuotas').addEventListener('click', async (e) => {
+    const btnPagarT = e.target.closest('[data-pagar-tarjeta]');
+    if (btnPagarT) {
+      const { pagarTarjeta, mes } = btnPagarT.dataset;
+      const delMes = getCuotas().filter((c) => c.estado === 'activa'
+        && c.tarjeta === pagarTarjeta && c.fecha_primer_venc.slice(0, 7) === mes);
+      if (!delMes.length) return;
+      const totalArs = delMes.filter((c) => c.moneda !== 'USD').reduce((a, c) => a + c.monto_cuota, 0);
+      const medio = mediosCredito().find((m) => m.key === pagarTarjeta);
+      const ok = await confirmar({
+        titulo: `¿Pagaste el resumen de ${medio?.nombre || pagarTarjeta}?`,
+        mensaje: delMes.length === 1
+          ? `Se marca 1 cuota por ${fmtARS.format(totalArs)}. Avanza un mes y el saldo baja.`
+          : `Se marcan ${delMes.length} cuotas por ${fmtARS.format(totalArs)}. Todas avanzan un mes y el saldo baja.`,
+        accion: 'Sí, lo pagué',
+      });
+      if (ok) { delMes.forEach(avanzarCuota); render(); }
+      return;
+    }
+
+    const btnRec = e.target.closest('[data-recordar]');
+    if (btnRec) {
+      const { recordar, venc } = btnRec.dataset;
+      const medio = mediosCredito().find((m) => m.key === recordar);
+      const nombre = medio?.nombre || recordar;
+      const delMes = getCuotas().filter((c) => c.estado === 'activa'
+        && c.tarjeta === recordar && c.fecha_primer_venc.slice(0, 7) === venc.slice(0, 7));
+      const totalArs = delMes.filter((c) => c.moneda !== 'USD').reduce((a, c) => a + c.monto_cuota, 0);
+      const totalUsd = delMes.filter((c) => c.moneda === 'USD').reduce((a, c) => a + c.monto_cuota, 0);
+
+      const cfg = await pedirConfigRecordatorio({
+        titulo: `Vence el resumen de ${nombre}`,
+        fecha: venc,
+      });
+      if (!cfg) return;
+
+      const detalle = [
+        `Total a pagar: ${fmtARS.format(totalArs)}${totalUsd ? ` + ${fmtUSD.format(totalUsd)}` : ''}`,
+        `${delMes.length} cuota${delMes.length > 1 ? 's' : ''} en el resumen.`,
+        '',
+        ...delMes.slice(0, 12).map((c) => `· ${c.descripcion} — ${fmt(c.monto_cuota, c.moneda)} (${c.cuota_actual}/${c.cuota_total})`),
+        delMes.length > 12 ? `…y ${delMes.length - 12} más.` : '',
+        '',
+        'Generado por KBL App.',
+      ].filter(Boolean).join('\n');
+
+      descargarIcs(`vence-${nombre}`, generarIcs({
+        titulo: `💳 Vence ${nombre} — ${fmtARS.format(totalArs)}`,
+        descripcion: detalle,
+        fecha: venc,
+        hora: cfg.hora,
+        avisoDias: cfg.avisoDias,
+        repetir: cfg.repetir,
+        uid: `venc-${recordar}-${venc}`,
+      }));
     }
   });
 

@@ -101,6 +101,8 @@ export const sumar = (acc, monto, moneda) => {
 export const masMontos = (...vs) =>
   vs.reduce((a, v) => ({ ars: a.ars + v.ars, usd: a.usd + v.usd }), cero());
 
+export const menosMontos = (a, b) => ({ ars: a.ars - b.ars, usd: a.usd - b.usd });
+
 export const hayUsd = (v) => v.usd > 0.005;
 
 // ---------- Catálogos ----------
@@ -108,6 +110,23 @@ export const hayUsd = (v) => v.usd > 0.005;
 // Tarjetas de crédito: sus consumos se pagan por resumen, o sea por `cuotas`.
 // En base CAJA no se cuentan como gasto del mes (si no, se duplican).
 export const TARJETAS_CREDITO = new Set(['visa', 'mac', 'mp']);
+
+// Lo que NUNCA es crédito, por más que aparezca en la lista de medios.
+const NO_CREDITO = new Set(['efectivo', 'debito', 'transferencia', 'caja']);
+
+/**
+ * Set de medios que se pagan por resumen. Arranca del legacy hardcodeado y se
+ * amplía con las tarjetas que Keni haya cargado en "Bancos y tarjetas": una
+ * Amex nueva tiene que duplicar tan poco como la Visa de siempre.
+ */
+export function setDeCredito(medios = []) {
+  const s = new Set(TARJETAS_CREDITO);
+  for (const m of medios) {
+    if (NO_CREDITO.has(m.key)) { s.delete(m.key); continue; }
+    s.add(m.key);
+  }
+  return s;
+}
 
 export const MEDIOS = [
   { key: 'visa', emoji: '💳', label: 'Visa' },
@@ -244,6 +263,54 @@ export function calendarioCuotas(cuotas) {
 }
 
 /**
+ * Vencimiento real de la cuota que toca este mes, por tarjeta. Sale del día
+ * de vencimiento configurado en el medio; si no está cargado, del día que
+ * traiga `fecha_primer_venc`. Devuelve Map tarjeta → { iso, dia, monto }.
+ */
+export function vencimientosDelMes(mes, cuotas, medios = []) {
+  const out = new Map();
+  for (const c of cuotas) {
+    if (c.estado !== 'activa') continue;
+    const mesCuota = addMesesFecha(c.fecha_primer_venc, 0);
+    if (mesCuota !== mes) continue;
+    const medio = medios.find((m) => m.key === c.tarjeta);
+    const dia = medio?.diaVencimiento ?? Number(c.fecha_primer_venc.slice(8, 10));
+    if (!out.has(c.tarjeta)) {
+      const [y, m] = mes.split('-').map(Number);
+      // Día 31 en un mes de 30 cae al 1° del siguiente: lo clampeamos al último.
+      const ultimo = new Date(y, m, 0).getDate();
+      const d = Math.min(dia, ultimo);
+      out.set(c.tarjeta, { iso: `${mes}-${pad2(d)}`, dia: d, monto: cero(), cuotas: [] });
+    }
+    const acc = out.get(c.tarjeta);
+    sumar(acc.monto, c.monto_cuota, c.moneda);
+    acc.cuotas.push(c);
+  }
+  return out;
+}
+
+/**
+ * Cuotas cuyo vencimiento YA pasó y siguen marcadas como no pagadas. Mientras
+ * estén así, `cuota_actual` miente ("2 de 9" cuando vas por la 3) y el saldo
+ * de deuda queda inflado. Es la razón por la que la deuda "no bajaba sola".
+ */
+export function cuotasVencidasSinPagar(cuotas, medios = [], hoy = hoyIso()) {
+  const out = [];
+  for (const c of cuotas) {
+    if (c.estado !== 'activa') continue;
+    const medio = medios.find((m) => m.key === c.tarjeta);
+    const mesVenc = c.fecha_primer_venc.slice(0, 7);
+    const dia = medio?.diaVencimiento ?? Number(c.fecha_primer_venc.slice(8, 10));
+    const [y, m] = mesVenc.split('-').map(Number);
+    const ultimo = new Date(y, m, 0).getDate();
+    const iso = `${mesVenc}-${pad2(Math.min(dia, ultimo))}`;
+    const dias = diasEntre(iso, hoy);
+    if (dias > 0) out.push({ cuota: c, venc: iso, diasPasados: dias });
+  }
+  return out;
+}
+
+/**
  * A qué período de facturación pertenece un gasto, según el día de cierre
  * del medio con el que se pagó (ej. Visa cierra el 6 → un gasto del 7 ya es
  * del período siguiente). Sin medio, o sin día de cierre configurado en ese
@@ -263,7 +330,7 @@ export function periodoDeGasto(fechaIso, medio) {
  * `medios`: lista de medios de pago (ver medios-credito.js) para resolver el
  * día de cierre de cada gasto con tarjeta; opcional, sin ella se comporta
  * como antes (mes calendario puro). */
-export function contexto({ gastos, cuotas, recurrentes, ahorros, medios = [] }) {
+export function contexto({ gastos, cuotas, recurrentes, ahorros, medios = [], inversiones = [] }) {
   const gastosPorMes = new Map();
   for (const g of gastos) {
     const medio = medios.find((md) => md.key === g.tarjeta);
@@ -272,10 +339,22 @@ export function contexto({ gastos, cuotas, recurrentes, ahorros, medios = [] }) 
     gastosPorMes.get(m).push(g);
   }
   return {
-    gastos, cuotas, recurrentes, ahorros, gastosPorMes,
+    gastos, cuotas, recurrentes, ahorros, medios, inversiones, gastosPorMes,
     match: matchear(gastos, recurrentes),
     calCuotas: calendarioCuotas(cuotas),
+    credito: setDeCredito(medios),
   };
+}
+
+/**
+ * Con qué se paga este concepto en este mes. Manda el gasto real si lo hay
+ * (es el dato duro del resumen); si no, lo que declaraste al crearlo.
+ */
+export function medioDeConcepto(r, mes, ctx) {
+  const real = (ctx.gastosPorMes.get(mes) || []).find(
+    (g) => ctx.match.get(g.id) === r.id && g.tarjeta
+  );
+  return real ? real.tarjeta : (r.medio || null);
 }
 
 /**
@@ -283,23 +362,46 @@ export function contexto({ gastos, cuotas, recurrentes, ahorros, medios = [] }) 
  * caja = lo que sale del bolsillo; consumo = lo que consumiste.
  */
 export function fotoDelMes(mes, ctx, base = 'caja') {
-  const ingresos = cero(), fijos = cero(), subs = cero();
+  const ingresos = cero(), fijosTotal = cero(), subsTotal = cero();
+  // La parte de fijos y suscripciones que se paga con tarjeta de crédito ya
+  // viaja dentro de `cuotas`: sumarla otra vez en base CAJA era contar dos
+  // veces la misma plata. Se acumula aparte para poder restarla.
+  const fijosTarjeta = cero(), subsTarjeta = cero();
   const varCaja = cero(), varConsumo = cero(), aportes = cero(), retiros = cero();
   const filasFijos = [], filasSubs = [], filasIngresos = [];
+  const credito = ctx.credito || TARJETAS_CREDITO;
 
   for (const r of ctx.recurrentes) {
     if (!vigenteEn(r, mes, ctx)) continue;
     const m = montoEn(r, mes, ctx);
     if (!m) continue;
-    if (r.tipo === 'ingreso') { sumar(ingresos, m, r.moneda); filasIngresos.push({ r, monto: m }); }
-    else if (r.tipo === 'suscripcion') { sumar(subs, m, r.moneda); filasSubs.push({ r, monto: m }); }
-    else { sumar(fijos, m, r.moneda); filasFijos.push({ r, monto: m }); }
+    if (r.tipo === 'ingreso') { sumar(ingresos, m, r.moneda); filasIngresos.push({ r, monto: m }); continue; }
+    const medio = medioDeConcepto(r, mes, ctx);
+    const porTarjeta = credito.has(medio);
+    if (r.tipo === 'suscripcion') {
+      sumar(subsTotal, m, r.moneda);
+      if (porTarjeta) sumar(subsTarjeta, m, r.moneda);
+      filasSubs.push({ r, monto: m, porTarjeta, medio });
+    } else {
+      sumar(fijosTotal, m, r.moneda);
+      if (porTarjeta) sumar(fijosTarjeta, m, r.moneda);
+      filasFijos.push({ r, monto: m, porTarjeta, medio });
+    }
   }
 
+  // Lo que pagaste por otro no es tu consumo, esté cobrado o no. Se acumula
+  // aparte: si lo sumáramos, un mes en que adelantaste una multa de $56.775
+  // parecería un mes de gasto alto y contaminaría el promedio de variable, la
+  // alerta de "día caro" y el ritmo del mes.
+  const ajenoPend = cero(), ajenoCobrado = cero();
   for (const g of (ctx.gastosPorMes.get(mes) || [])) {
     if (ctx.match.has(g.id)) continue;               // ya contado como concepto
+    if (g.reintegro) {
+      sumar(g.reintegro === 'cobrado' ? ajenoCobrado : ajenoPend, g.monto, g.moneda);
+      continue;
+    }
     sumar(varConsumo, g.monto, g.moneda);
-    if (!TARJETAS_CREDITO.has(g.tarjeta)) sumar(varCaja, g.monto, g.moneda);
+    if (!credito.has(g.tarjeta)) sumar(varCaja, g.monto, g.moneda);
   }
 
   const cuotas = ctx.calCuotas.get(mes) || cero();
@@ -309,16 +411,30 @@ export function fotoDelMes(mes, ctx, base = 'caja') {
     sumar(a.tipo === 'retiro' ? retiros : aportes, a.monto, a.moneda);
   }
 
-  const estructural = masMontos(fijos, subs);
-  const egresoCaja = masMontos(estructural, cuotas, varCaja);
-  const egresoConsumo = masMontos(estructural, varConsumo);
+  // Lo estructural que sale del bolsillo este mes (débito, efectivo,
+  // transferencia). El resto lo cobra el resumen y está en `cuotas`.
+  const fijosCaja = menosMontos(fijosTotal, fijosTarjeta);
+  const subsCaja = menosMontos(subsTotal, subsTarjeta);
+  const estructuralTotal = masMontos(fijosTotal, subsTotal);
+  const estructuralTarjeta = masMontos(fijosTarjeta, subsTarjeta);
+  const estructuralCaja = masMontos(fijosCaja, subsCaja);
+
+  const egresoCaja = masMontos(estructuralCaja, cuotas, varCaja);
+  const egresoConsumo = masMontos(estructuralTotal, varConsumo);
   const egreso = base === 'caja' ? egresoCaja : egresoConsumo;
   const variable = base === 'caja' ? varCaja : varConsumo;
 
   return {
-    mes, ingresos, fijos, subs, estructural, cuotas,
+    mes, ingresos, cuotas,
+    // Ajustados a la base elegida: son los que pintan el hero y el flujo.
+    fijos: base === 'caja' ? fijosCaja : fijosTotal,
+    subs: base === 'caja' ? subsCaja : subsTotal,
+    estructural: base === 'caja' ? estructuralCaja : estructuralTotal,
+    // Sin ajustar: el costo estructural real, que no depende de con qué pagues.
+    fijosTotal, subsTotal, estructuralTotal,
+    fijosTarjeta, subsTarjeta, estructuralTarjeta, fijosCaja, subsCaja, estructuralCaja,
     varCaja, varConsumo, variable, egreso, egresoCaja, egresoConsumo,
-    aportes, retiros,
+    aportes, retiros, ajenoPend, ajenoCobrado,
     disponible: { ars: ingresos.ars - egreso.ars, usd: ingresos.usd - egreso.usd },
     filasFijos, filasSubs, filasIngresos,
   };
@@ -329,4 +445,166 @@ export function deudaPendiente(mes, cal) {
   const acc = cero();
   for (const [m, v] of cal) if (m >= mes) { acc.ars += v.ars; acc.usd += v.usd; }
   return acc;
+}
+
+// ---------- Plata que pusiste por otro ----------
+
+/**
+ * Lo que adelantaste y todavía no te devolvieron, agrupado por quién te lo
+ * debe. No es un gasto tuyo, es un préstamo: hasta que no vuelve, es plata
+ * que no tenés pero tampoco gastaste.
+ */
+export function pendientesDeReintegro(gastos) {
+  const porQuien = new Map();
+  for (const g of gastos) {
+    if (g.reintegro !== 'pendiente') continue;
+    const quien = (g.reintegro_de || '').trim() || 'Sin anotar';
+    if (!porQuien.has(quien)) porQuien.set(quien, { quien, total: cero(), items: [] });
+    const acc = porQuien.get(quien);
+    sumar(acc.total, g.monto, g.moneda);
+    acc.items.push(g);
+  }
+  for (const v of porQuien.values()) {
+    v.items.sort((a, b) => b.fecha.localeCompare(a.fecha));
+    v.desde = v.items.at(-1).fecha;
+    v.dias = diasEntre(v.desde, hoyIso());
+  }
+  return [...porQuien.values()].sort((a, b) => b.total.ars - a.total.ars);
+}
+
+// ---------- Indicadores ----------
+// Los ratios que mira alguien que audita finanzas de verdad, no el detalle de
+// cada gasto. La app ya tenía todos los datos: lo que faltaba era el cociente.
+//
+// `eq` lleva un {ars, usd} a pesos con la cotización elegida (la inyecta quien
+// llama, para que este módulo siga sin depender de la red).
+
+/**
+ * Cuadro de mando del mes. Cada indicador trae `valor` crudo, el `texto` ya
+ * formateado y un `estado` (bien / atencion / mal) para pintarlo. `estado`
+ * null = no hay datos suficientes; nunca inventamos un semáforo en verde.
+ */
+export function indicadores(mes, ctx, foto, eq, { fotos = [] } = {}) {
+  const ing = eq(foto.ingresos);
+  // Dos números distintos a propósito: `estructural` es el COSTO de tu
+  // estructura (no depende de con qué la pagues) y `estructuralCaja` es la
+  // parte que sale del bolsillo — el resto ya está adentro de `cuotas`.
+  const estructural = eq(foto.estructuralTotal);
+  const cuotasMes = eq(foto.cuotas);
+  const variable = eq(foto.varConsumo);
+  const comprometido = eq(foto.estructuralCaja) + cuotasMes;
+  const saldoDeuda = eq(deudaPendiente(mes, ctx.calCuotas));
+
+  // Stock de ahorro acumulado hasta el mes que se está mirando.
+  const stock = cero();
+  for (const a of ctx.ahorros) {
+    if (a.fecha.slice(0, 7) > mes) continue;
+    sumar(stock, a.tipo === 'retiro' ? -a.monto : a.monto, a.moneda);
+  }
+  const ahorroStock = eq(stock);
+  const ahorroNeto = eq(foto.aportes) - eq(foto.retiros);
+
+  // Costo de vivir un mes: estructura + lo que gastás de variable en promedio.
+  const varProm = fotos.length
+    ? fotos.map((f) => eq(f.varConsumo)).reduce((a, b) => a + b, 0) / fotos.length
+    : variable;
+  const costoMensual = eq(foto.estructuralCaja) + cuotasMes + varProm;
+
+  // Cuándo dejás de arrastrar deuda.
+  const mesesConDeuda = [...ctx.calCuotas.keys()].filter((m) => m >= mes).sort();
+  const ultimoMes = mesesConDeuda.at(-1) || null;
+
+  const semaforo = (v, bien, mal, invertido = false) => {
+    if (v == null || !isFinite(v)) return null;
+    if (invertido) return v >= bien ? 'bien' : v <= mal ? 'mal' : 'atencion';
+    return v <= bien ? 'bien' : v >= mal ? 'mal' : 'atencion';
+  };
+
+  return [
+    {
+      key: 'dti',
+      label: 'Carga de deuda',
+      ayuda: 'Cuota del mes sobre ingreso. Arriba de 30% un banco ya te mira feo; arriba de 40% no te presta.',
+      valor: ing ? cuotasMes / ing : null,
+      texto: ing ? pct(cuotasMes / ing) : '—',
+      detalle: ing ? `${fmtARS.format(cuotasMes)} de cuotas sobre ${fmtARS.format(ing)}` : 'Cargá tu ingreso',
+      estado: semaforo(ing ? cuotasMes / ing : null, 0.30, 0.40),
+    },
+    {
+      key: 'carga',
+      label: 'Ingreso comprometido',
+      ayuda: 'Fijos + suscripciones + cuotas antes de gastar un peso. Es tu piso: lo que pase de acá es lo único que podés decidir.',
+      valor: ing ? comprometido / ing : null,
+      texto: ing ? pct(comprometido / ing) : '—',
+      detalle: ing
+        ? `Te quedan ${fmtARS.format(ing - comprometido)} libres`
+        : 'Cargá tu ingreso',
+      estado: semaforo(ing ? comprometido / ing : null, 0.65, 0.85),
+    },
+    {
+      key: 'cobertura',
+      label: 'Cobertura de fijos',
+      ayuda: 'Cuántas veces tu ingreso cubre tu estructura. Abajo de 1 no llegás ni quedándote en tu casa.',
+      valor: estructural ? ing / estructural : null,
+      texto: estructural ? `${(ing / estructural).toFixed(1).replace('.', ',')}×` : '—',
+      detalle: estructural ? `Estructura de ${fmtARS.format(estructural)}/mes` : 'Sin fijos cargados',
+      estado: semaforo(estructural ? ing / estructural : null, 3, 1.5, true),
+    },
+    {
+      key: 'ahorro',
+      label: 'Tasa de ahorro',
+      ayuda: 'Lo que apartaste este mes sobre lo que entró. Es el único indicador que construye patrimonio.',
+      valor: ing ? ahorroNeto / ing : null,
+      texto: ing ? pct(ahorroNeto / ing) : '—',
+      detalle: ing ? `${fmtARS.format(ahorroNeto)} apartados` : 'Cargá tu ingreso',
+      estado: semaforo(ing ? ahorroNeto / ing : null, 0.15, 0.05, true),
+    },
+    {
+      key: 'colchon',
+      label: 'Colchón',
+      ayuda: 'Meses que aguantás con lo ahorrado si mañana se corta el ingreso. Menos de 3 es zona de riesgo.',
+      valor: costoMensual ? ahorroStock / costoMensual : null,
+      texto: costoMensual
+        ? `${(ahorroStock / costoMensual).toFixed(1).replace('.', ',')} mes${ahorroStock / costoMensual === 1 ? '' : 'es'}`
+        : '—',
+      detalle: costoMensual
+        ? `${fmtARS.format(ahorroStock)} contra ${fmtARS.format(costoMensual)}/mes de vida`
+        : 'Faltan datos',
+      estado: semaforo(costoMensual ? ahorroStock / costoMensual : null, 6, 3, true),
+    },
+    {
+      key: 'apalanca',
+      label: 'Deuda / ingreso',
+      ayuda: 'Cuántos sueldos enteros debés hoy en cuotas. No es urgente pero define cuánto margen tenés para lo que venga.',
+      valor: ing ? saldoDeuda / ing : null,
+      texto: ing ? `${(saldoDeuda / ing).toFixed(1).replace('.', ',')} sueldos` : '—',
+      detalle: ultimoMes
+        ? `Saldo ${fmtARS.format(saldoDeuda)} · libre en ${labelMes(addMes(ultimoMes, 1))}`
+        : 'Sin deuda',
+      estado: semaforo(ing ? saldoDeuda / ing : null, 1, 3),
+    },
+  ];
+}
+
+/**
+ * Cuánto te queda por día para lo que resta del mes. Es el número más
+ * accionable que puede darte una app de gastos: no "gastaste mucho", sino
+ * "tenés $X por día hasta fin de mes".
+ */
+export function ritmoDisponible(foto, eq, hoy = new Date()) {
+  const ing = eq(foto.ingresos);
+  if (!ing) return null;
+  const finMes = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0).getDate();
+  const diaHoy = hoy.getDate();
+  const restan = Math.max(1, finMes - diaHoy + 1);
+  // Lo comprometido se paga sí o sí; lo variable ya gastado, también. Va la
+  // estructura de CAJA para no contar dos veces lo que paga la tarjeta.
+  const libre = ing - eq(foto.estructuralCaja) - eq(foto.cuotas) - eq(foto.varCaja);
+  return {
+    libre,
+    restan,
+    porDia: libre / restan,
+    gastadoPorDia: eq(foto.varConsumo) / Math.max(1, diaHoy),
+    finMes,
+  };
 }
