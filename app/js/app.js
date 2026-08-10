@@ -9,6 +9,7 @@ import { initNotas, renderNotas } from './notas.js';
 import { initCuotas, renderCuotas } from './cuotas.js';
 import { initPanel, renderPanel } from './panel.js';
 import { initCotizacion } from './cotizacion.js';
+import { initAjustes } from './ajustes.js';
 import { confirmar } from './dialog.js';
 
 const $ = (sel) => document.querySelector(sel);
@@ -46,7 +47,10 @@ const ETAPAS = 4;
 // Especies con etapas renderizadas. Las que faltan crecen por escala (abajo);
 // se listan a mano para no disparar 36 pedidos condenados a 404 por sesión.
 // Al agregar una etapa nueva con blender/render_etapas.sh, sumarla acá.
-const CON_ETAPAS = new Set(['arbolito', 'roble', 'sakura']);
+// El bonsái entró el 2026-08-08, cuando se encontró por qué su mitad superior
+// no se renderizaba (el displace de corteza era más grande que el radio del
+// tronco y daba los vértices vuelta del revés — ver TAREAS.md).
+const CON_ETAPAS = new Set(['arbolito', 'roble', 'sakura', 'bonsai']);
 const rutaEtapa = (esp, etapa, i) => {
   const ff = String(i).padStart(2, '0');
   return etapa >= ETAPAS - 1
@@ -547,17 +551,16 @@ async function init() {
 
 init();
 
-// ---------- Dark mode toggle ----------
+// ---------- Tema + Ajustes ----------
+// El tema se aplica acá al arrancar (antes del primer pintado); el botón ya no
+// lo cambia directo, abre el panel de Ajustes donde vive junto a la cotización,
+// la meta de ahorro y el cierre de sesión.
 (function () {
   const btn = $('#theme-toggle');
-  const saved = localStorage.getItem('kbl.theme');
-  const apply = (dark) => {
-    document.body.setAttribute('data-theme', dark ? 'dark' : 'light');
-    btn.textContent = dark ? '☀️' : '🌙';
-    localStorage.setItem('kbl.theme', dark ? 'dark' : 'light');
-  };
-  apply(saved === 'dark');
-  btn.addEventListener('click', () => apply(document.body.dataset.theme !== 'dark'));
+  const dark = localStorage.getItem('kbl.theme') === 'dark';
+  document.body.setAttribute('data-theme', dark ? 'dark' : 'light');
+  if (btn) btn.textContent = dark ? '☀️' : '🌙';
+  initAjustes();
 })();
 
 // ---------- PWA ----------

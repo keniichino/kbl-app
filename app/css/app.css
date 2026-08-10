@@ -7,11 +7,20 @@
   --sky: linear-gradient(180deg, #8fb4e6 0%, #b7bcee 42%, #e7cfe6 72%, #f8e4d9 100%);
   --grass: #6fce55;
   --grass-deep: #4caf3f;
-  --ink: #234032;
-  --ink-soft: #4c6b58;
+  --ink: #1b3327;
+  /* El texto secundario vive sobre tarjetas semitransparentes encima de un
+     cielo con gradiente: el fondo real cambia según la hora y la posición.
+     Por eso va más oscuro que un gris "de diseño" — tiene que aguantar el
+     peor fondo posible, no el del mockup. */
+  --ink-soft: #3d5b4a;
   --card: rgba(255, 255, 255, 0.72);
   --accent: #ff8a5c;
   --accent-deep: #f26d3d;
+  /* Medidos contra el peor extremo del gradiente del tabbar (blanco al 35%
+     sobre el cielo), que es donde menos contraste hay: 5,0:1 y 4,7:1. */
+  --tab-off: #3a5645;
+  --tab-on: #8a2f07;
+  --tab-on-bg: rgba(242, 109, 61, .16);
   --radius-xl: 28px;
   --radius-lg: 20px;
   --shadow-soft: 0 10px 30px rgba(35, 64, 50, 0.14);
@@ -387,8 +396,15 @@ body[data-phase="noche"] .tabbar { background: linear-gradient(150deg, rgba(255,
   top: 8%; left: 50%; bottom: 8%;
   width: 150px;
   margin-left: -75px;
-  transition: transform .12s linear, opacity .12s linear;
-  will-change: transform, opacity;
+  /* `filter` en la transición junto a transform/opacity: el desenfoque de
+     profundidad tiene que acompañar el vuelo, no aparecer de golpe al final. */
+  transition: transform .12s linear, opacity .12s linear, filter .18s linear;
+  will-change: transform, opacity, filter;
+}
+/* En pantallas grandes hay lugar para que el bosque sea el protagonista. */
+@media (min-width: 1024px) {
+  .bosque-vuelo { height: 380px; }
+  .isla-slot { width: 190px; margin-left: -95px; }
 }
 .isla-slot.oculta { display: none; }
 .isla-slot-img, .isla-slot canvas {
@@ -425,6 +441,16 @@ body[data-phase="noche"] .tabbar { background: linear-gradient(150deg, rgba(255,
   background: #fff;
   color: var(--ink);
   box-shadow: 0 2px 8px rgba(35, 64, 50, .18);
+}
+/* En oscuro el `background: #fff` de arriba quedaba con `color: var(--ink)`,
+   que en este tema es #e8eef7: blanco sobre blanco. La pestaña seleccionada
+   (Caja / Consumo) era literalmente ilegible. */
+body[data-theme="dark"] .viewer-species { background: rgba(255,255,255,.06); }
+body[data-theme="dark"] .seg-btn { color: var(--ink-soft); }
+body[data-theme="dark"] .seg-btn.selected {
+  background: rgba(255,255,255,.17);
+  color: #fff;
+  box-shadow: none;
 }
 
 /* ====== Notas ====== */
@@ -777,11 +803,27 @@ body[data-theme="dark"] .resumen-ahorro { color: #6ee7b7; }
   align-items: center; justify-content: center;
   gap: 2px;
   font: 800 .7rem var(--font);
-  color: #9ab0a2;
-  transition: color .2s, transform .15s;
+  /* Por variable y no por color literal: así el tema oscuro lo redefine por
+     herencia y no dependemos de que gane una cascada de dos selectores.
+     El valor viejo (#9ab0a2) daba 1,4:1 contra el vidrio del tabbar — los
+     nombres de las pestañas eran casi invisibles, sobre todo en la PC. */
+  color: var(--tab-off);
+  /* `color` fuera de la transición a propósito: Chrome no re-evalúa una
+     propiedad que resuelve var() si además tiene transition declarada, y al
+     cambiar de tema las pestañas se quedaban con el color del tema anterior.
+     El cambio de tema es instantáneo igual — no hay nada que animar ahí. */
+  transition: transform .15s, background .2s;
 }
 .tab:active { transform: scale(.9); }
-.tab.active { color: var(--accent-deep); }
+/* El activo lleva pastilla de fondo además del color: el naranja de marca
+   sobre vidrio claro no llega a 4,5:1 por sí solo, y la pastilla marca la
+   pestaña actual aunque no distingas el matiz. */
+.tab.active {
+  color: var(--tab-on);
+  background: var(--tab-on-bg);
+  border-radius: 14px;
+  margin: 6px 4px;
+}
 .tab-icon { font-size: 1.45rem; }
 
 /* ====== Diálogo estilo iOS ====== */
@@ -1069,35 +1111,45 @@ body[data-theme="dark"] .resumen-ahorro { color: #6ee7b7; }
 .cuotas-empty-sub { font-size: .85rem; color: var(--ink-soft); text-align: center; padding: 8px 0; }
 
 /* ====== Theme Toggle Button ====== */
+/* Abajo a la derecha, por encima de la tabbar: arriba chocaba con el
+   navegador de meses del Panel ("‹ Agosto 2026 ›") y le tapaba la flecha. */
 .theme-toggle {
   position: fixed;
-  top: 14px; right: 14px;
+  bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom) + 12px);
+  right: 16px;
   z-index: 100;
-  width: 34px; height: 34px;
+  width: 42px; height: 42px;
   border-radius: 50%;
   border: none;
-  background: rgba(255,255,255,.55);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  font-size: 1rem;
+  background: rgba(255,255,255,.72);
+  backdrop-filter: blur(14px) saturate(1.4);
+  -webkit-backdrop-filter: blur(14px) saturate(1.4);
+  font-size: 1.15rem;
   cursor: pointer;
   display: flex; align-items: center; justify-content: center;
-  box-shadow: 0 2px 8px rgba(0,0,0,.12);
+  box-shadow: 0 4px 14px rgba(0,0,0,.18);
   transition: background .2s, transform .15s;
   line-height: 1;
+}
+/* En escritorio la tabbar es lateral, así que abajo no hay nada que esquivar. */
+@media (min-width: 1024px) {
+  .theme-toggle { bottom: 18px; right: 22px; }
 }
 .theme-toggle:active { transform: scale(.9); }
 
 /* ====== DARK MODE — Ejecutivo ====== */
 body[data-theme="dark"] {
   --sky: linear-gradient(160deg, #0d1117 0%, #0f1825 55%, #131c30 100%);
-  --ink: #dde4ef;
-  --ink-soft: #8b9aaf;
+  --ink: #e8eef7;
+  --ink-soft: #9fb0c6;
   --card: rgba(255,255,255,.06);
   --grass: #34d399;
   --grass-deep: #10b981;
   --accent: #f59e0b;
   --accent-deep: #60a5fa;
+  --tab-off: #8494a8;
+  --tab-on: #8cc0ff;
+  --tab-on-bg: rgba(96, 165, 250, .16);
   --shadow-soft: 0 8px 28px rgba(0,0,0,.55);
 }
 
@@ -1119,8 +1171,8 @@ body[data-theme="dark"] .tabbar {
   border-top-color: rgba(255,255,255,.08);
   box-shadow: none;
 }
-body[data-theme="dark"] .tab { color: #4a5568; }
-body[data-theme="dark"] .tab.active { color: #60a5fa; }
+/* El color de las pestañas ahora sale de --tab-off / --tab-on, que el bloque
+   de variables de arriba ya redefine para el tema oscuro. */
 
 /* Chips */
 body[data-theme="dark"] .chip {
@@ -1312,10 +1364,13 @@ body[data-theme="dark"] .btn-logout {
   --fin-var:    #3f9b6d;
   --fin-ahorro: #12867c;
   --fin-ok:     #14784f;
-  --fin-mal:    #c2410c;
-  --fin-surf:   rgba(255,255,255,.72);
-  --fin-borde:  rgba(35,64,50,.10);
-  --fin-rule:   rgba(35,64,50,.08);
+  --fin-mal:    #b23c09;
+  /* .72 dejaba pasar el cielo y el texto chico perdía contraste según qué
+     franja del gradiente quedara atrás. .88 mantiene el vidrio pero fija un
+     piso de legibilidad que no depende de la hora del día. */
+  --fin-surf:   rgba(255,255,255,.88);
+  --fin-borde:  rgba(27,51,39,.14);
+  --fin-rule:   rgba(27,51,39,.10);
 }
 body[data-theme="dark"] {
   --fin-fijo:   #60a5fa;
@@ -1325,9 +1380,9 @@ body[data-theme="dark"] {
   --fin-ahorro: #2dd4bf;
   --fin-ok:     #34d399;
   --fin-mal:    #fb923c;
-  --fin-surf:   rgba(255,255,255,.045);
-  --fin-borde:  rgba(255,255,255,.08);
-  --fin-rule:   rgba(255,255,255,.07);
+  --fin-surf:   rgba(255,255,255,.07);
+  --fin-borde:  rgba(255,255,255,.12);
+  --fin-rule:   rgba(255,255,255,.10);
 }
 
 #view-panel { padding-bottom: 8px; }
@@ -1364,9 +1419,15 @@ body[data-theme="dark"] {
 /* ---- Base de cálculo ---- */
 .fin-base-wrap { margin-bottom: 4px; }
 .fin-base { margin: 6px 16px 0; }
+/* Sobre superficie de tarjeta y no suelto encima del cielo: ahí el fondo real
+   depende de qué franja del gradiente le toque y bajaba a 3,5:1. */
 .fin-base-ayuda {
-  margin: 7px 20px 0;
-  font-size: .7rem; line-height: 1.45; color: var(--ink-soft);
+  margin: 8px 16px 0;
+  padding: 10px 13px;
+  border-radius: 13px;
+  background: var(--fin-surf);
+  border: 1px solid var(--fin-borde);
+  font-size: .74rem; line-height: 1.5; color: var(--ink-soft);
 }
 .fin-base-ayuda b { color: var(--ink); font-weight: 800; }
 
@@ -1454,7 +1515,46 @@ body[data-theme="dark"] .fin-alloc { background: rgba(255,255,255,.06); }
 .fin-desg-pct { font-size: .74rem; color: var(--ink-soft); font-weight: 700; min-width: 34px; text-align: right; }
 .fin-desg-monto { font-size: .84rem; font-weight: 700; min-width: 92px; text-align: right; }
 .fin-usd { font-size: .78em; font-weight: 700; color: var(--ink-soft); white-space: nowrap; }
+
+/* "$ 9.381 + US$ 22,87" no dice cuánto es en total. Esta línea lo resuelve:
+   la suma a la cotización elegida, que es la pregunta real. */
+.fin-total-eq {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 10px; padding: 7px 0 2px;
+  border-top: 1px dashed var(--fin-rule); margin-top: 4px;
+}
+.fin-total-eq-label { font-size: .72rem; font-weight: 700; color: var(--ink-soft); }
+.fin-total-eq-monto {
+  font-size: .95rem; font-weight: 800; color: var(--ink);
+  cursor: pointer; white-space: nowrap;
+  border-bottom: 1px dotted var(--ink-soft);
+}
+.fin-hero-suma {
+  font-size: .82rem; font-weight: 800; color: var(--ink);
+  margin-top: 3px;
+}
 .fin-vacio-inline { font-size: .8rem; color: var(--ink-soft); padding: 6px 0; }
+/* En base Consumo las cuotas no suman al total, pero tampoco pueden no estar:
+   la pregunta "¿y las cuotas?" es lo primero que se hace cualquiera. Van en su
+   propia línea, fuera del total y visualmente separadas por la línea punteada. */
+.fin-hero-aparte {
+  display: grid; grid-template-columns: 9px 1fr auto;
+  align-items: center; gap: 8px;
+  margin-top: 7px; padding-top: 8px;
+  border-top: 1px dashed var(--fin-borde);
+}
+.fin-hero-aparte-punto { width: 9px; height: 9px; border-radius: 3px; opacity: .55; }
+.fin-hero-aparte-label { font-size: .82rem; font-weight: 600; color: var(--ink-soft); }
+.fin-hero-aparte-monto { font-size: .84rem; font-weight: 700; color: var(--ink-soft); min-width: 92px; text-align: right; }
+
+/* Por qué los fijos no tienen línea propia en base Caja. Sin esta aclaración,
+   declarar un fijo que paga la tarjeta lo hacía "desaparecer" del hero. */
+.fin-hero-aclara {
+  margin-top: 8px; padding-top: 9px;
+  border-top: 1px solid var(--fin-rule);
+  font-size: .74rem; line-height: 1.5; color: var(--ink-soft);
+}
+.fin-hero-aclara b { color: var(--ink); font-weight: 800; }
 
 /* ---- Tiles ---- */
 .fin-tiles {
@@ -1538,7 +1638,7 @@ body[data-theme="dark"] .fin-alloc { background: rgba(255,255,255,.06); }
 body[data-theme="dark"] .fin-hist-col { background: rgba(255,255,255,.04); }
 .fin-hist-col--sel { background: color-mix(in srgb, var(--fin-fijo) 16%, transparent); }
 .fin-hist-monto { font-size: .68rem; font-weight: 800; color: var(--ink); }
-.fin-hist-mes { font-size: .6rem; color: var(--ink-soft); text-transform: uppercase; letter-spacing: .04em; }
+.fin-hist-mes { font-size: .64rem; color: var(--ink-soft); text-transform: uppercase; letter-spacing: .04em; }
 
 .fin-hitos { margin-bottom: 10px; }
 .fin-hitos-label {
@@ -1645,7 +1745,7 @@ body[data-theme="dark"] .fin-edit-input { background: rgba(255,255,255,.1); colo
   font-size: .62rem; font-weight: 700; color: var(--ink-soft);
   text-transform: uppercase; letter-spacing: .04em; text-align: center; margin-top: 5px;
 }
-.fin-col-monto { font-size: .6rem; color: var(--ink-soft); text-align: center; opacity: .8; }
+.fin-col-monto { font-size: .64rem; color: var(--ink-soft); text-align: center; }
 .fin-col--hoy .fin-col-mes { color: var(--ink); }
 
 .fin-leyenda { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; }
@@ -1666,6 +1766,46 @@ body[data-theme="dark"] .fin-edit-input { background: rgba(255,255,255,.1); colo
   transition: height .45s cubic-bezier(.3,.9,.3,1);
 }
 .fin-mini-bar--pico { opacity: 1; }
+/* Las columnas de deuda ahora son botones: tocás un mes y abajo se abre el
+   detalle de qué compras lo componen. Antes el monto vivía sólo en el `title`
+   del hover, que en el celular no existe. */
+.fin-mini-col {
+  border: none; background: none; cursor: pointer; padding: 2px 1px 3px;
+  border-radius: 9px; font: inherit;
+  transition: background .15s;
+}
+.fin-mini-col:active { transform: scale(.95); }
+.fin-mini-col--sel { background: var(--fin-rule); }
+.fin-mini-col--sel .fin-mini-mes { color: var(--ink); font-weight: 800; }
+.fin-mini-monto { font-size: .58rem; color: var(--ink-soft); font-weight: 700; margin-top: 1px; }
+
+.fin-deuda-mes {
+  margin-top: 10px; padding: 11px 13px;
+  border-radius: 13px; background: var(--fin-rule);
+}
+.fin-deuda-mes-head {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 10px; padding-bottom: 7px; margin-bottom: 5px;
+  border-bottom: 1px solid var(--fin-borde);
+  font-size: .8rem; color: var(--ink-soft); font-weight: 600;
+}
+.fin-deuda-mes-head b { color: var(--ink); font-weight: 800; text-transform: capitalize; }
+.fin-deuda-mes-total {
+  display: flex; flex-direction: column; align-items: flex-end;
+  font-size: .95rem; font-weight: 800; color: var(--ink); white-space: nowrap;
+}
+.fin-deuda-mes-pct { font-size: .66rem; font-weight: 700; color: var(--ink-soft); }
+.fin-deuda-item {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 10px; padding: 4px 0;
+}
+.fin-deuda-item-desc {
+  display: flex; flex-direction: column; min-width: 0;
+  font-size: .8rem; font-weight: 600; color: var(--ink);
+}
+.fin-deuda-item-cuota { font-size: .66rem; font-weight: 700; color: var(--ink-soft); }
+.fin-deuda-item-monto { font-size: .82rem; font-weight: 800; white-space: nowrap; }
+
 .fin-mini-mes {
   font-size: .58rem; font-weight: 700; color: var(--ink-soft);
   text-transform: uppercase; text-align: center; margin-top: 4px;
@@ -1698,6 +1838,115 @@ body[data-theme="dark"] .fin-edit-input { background: rgba(255,255,255,.1); colo
   transition: width .45s cubic-bezier(.3,.9,.3,1);
 }
 
+/* ---- Te deben (gastos por cuenta de otro) ---- */
+.fin-deudores { margin-top: 4px; }
+.fin-deudor {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 10px; padding: 8px 0 3px;
+}
+.fin-deudor-quien {
+  display: flex; flex-direction: column;
+  font-size: .86rem; font-weight: 800; color: var(--ink);
+}
+.fin-deudor-desde { font-size: .68rem; font-weight: 600; color: var(--ink-soft); }
+.fin-deudor-monto { font-size: .9rem; font-weight: 800; color: var(--fin-mal); white-space: nowrap; }
+.fin-deudor-item {
+  display: flex; justify-content: space-between; gap: 10px;
+  padding: 3px 0 3px 10px;
+  font-size: .74rem; color: var(--ink-soft); font-weight: 600;
+  border-left: 2px solid var(--fin-rule); margin-left: 2px;
+}
+
+/* Un gasto ajeno se ve distinto en la lista: el monto tachado deja claro de un
+   vistazo que no cuenta en tu total. */
+.gasto-item--ajeno { opacity: 1; }
+.gasto-monto--ajeno { text-decoration: line-through; color: var(--ink-soft); }
+.gasto-ajeno-badge {
+  display: inline-block; margin-top: 2px;
+  font-size: .64rem; font-weight: 800; padding: 1px 6px; border-radius: 999px;
+}
+.gasto-ajeno-badge--pendiente { background: color-mix(in srgb, var(--fin-mal) 16%, transparent); color: var(--fin-mal); }
+.gasto-ajeno-badge--cobrado   { background: color-mix(in srgb, var(--fin-ok) 16%, transparent);  color: var(--fin-ok); }
+.gasto-ajeno {
+  border: none; background: none; cursor: pointer;
+  font-size: .95rem; padding: 4px 5px; border-radius: 8px;
+  opacity: .45; transition: opacity .15s;
+}
+.gasto-ajeno:hover, .gasto-item--ajeno .gasto-ajeno { opacity: 1; }
+
+/* Campo de texto de los diálogos (pedirTexto) */
+.dialog-input {
+  width: 100%; margin: 12px 0 4px;
+  padding: 11px 13px;
+  font: 600 .95rem var(--font); color: var(--ink);
+  background: var(--fin-rule);
+  border: 1px solid var(--fin-borde);
+  border-radius: 12px; outline: none;
+}
+.dialog-input:focus { border-color: var(--accent); }
+
+/* ---- Mercado ---- */
+.mk-activo { padding: 11px 0; border-bottom: 1px solid var(--fin-rule); }
+.mk-activo:last-of-type { border-bottom: none; }
+.mk-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.mk-id { display: flex; flex-direction: column; min-width: 0; }
+.mk-nombre { font-size: .92rem; font-weight: 800; color: var(--ink); }
+.mk-ticker { font-size: .68rem; font-weight: 600; color: var(--ink-soft); }
+.mk-precio {
+  display: flex; flex-direction: column; align-items: flex-end;
+  font-size: 1.02rem; font-weight: 800; color: var(--ink); white-space: nowrap;
+}
+.mk-dia { font-size: .72rem; font-weight: 800; }
+
+.mk-metricas { display: flex; gap: 6px 18px; flex-wrap: wrap; margin-top: 9px; }
+.mk-metrica { display: flex; flex-direction: column; }
+.mk-metrica i {
+  font-style: normal; font-size: .62rem; font-weight: 800; color: var(--ink-soft);
+  text-transform: uppercase; letter-spacing: .05em;
+}
+.mk-metrica b { font-size: .85rem; font-weight: 800; color: var(--ink); }
+
+/* Rango histórico: p25 — mediana — p75, con el cero marcado. Se muestra el
+   rango entero y no sólo la mediana a propósito: la dispersión ES el dato. */
+.mk-hist { margin-top: 11px; padding: 10px 12px; border-radius: 12px; background: var(--fin-rule); }
+.mk-hist-titulo {
+  font-size: .64rem; font-weight: 800; color: var(--ink-soft);
+  text-transform: uppercase; letter-spacing: .06em; margin-bottom: 8px;
+}
+.mk-hist-barra { position: relative; height: 8px; margin: 0 2px 5px; }
+.mk-hist-rango {
+  position: absolute; top: 2px; height: 4px; border-radius: 2px;
+  background: color-mix(in srgb, var(--fin-fijo) 45%, transparent);
+}
+.mk-hist-cero {
+  position: absolute; top: -2px; width: 1px; height: 12px;
+  background: var(--ink-soft); opacity: .6;
+}
+.mk-hist-mediana {
+  position: absolute; top: -3px; width: 3px; height: 14px; border-radius: 2px;
+  background: var(--fin-fijo); transform: translateX(-1px);
+}
+.mk-hist-nums {
+  display: flex; justify-content: space-between; align-items: baseline;
+  font-size: .68rem; color: var(--ink-soft); font-weight: 700;
+}
+.mk-hist-nums b { font-size: .78rem; color: var(--ink); font-weight: 800; }
+.mk-hist-nota { font-size: .7rem; line-height: 1.5; color: var(--ink-soft); margin-top: 7px; }
+.mk-hist-nota b { color: var(--ink); font-weight: 800; }
+.mk-hist-nota--pocos { margin-top: 10px; font-style: italic; }
+
+.mk-tuyo {
+  margin-top: 9px; padding: 8px 10px; border-radius: 10px;
+  background: color-mix(in srgb, var(--fin-ok) 10%, transparent);
+  font-size: .76rem; line-height: 1.45; color: var(--ink-soft);
+}
+.mk-tuyo b { color: var(--ink); font-weight: 800; }
+.mk-aviso {
+  margin-top: 7px; font-size: .68rem; line-height: 1.45; color: var(--ink-soft);
+  padding-left: 8px; border-left: 2px solid var(--fin-cuota);
+}
+.mk-pie { margin-top: 12px; }
+
 /* ---- Movimientos de ahorro ---- */
 .fin-mov {
   display: grid; grid-template-columns: 20px 1fr auto;
@@ -1715,9 +1964,17 @@ body[data-theme="dark"] .fin-edit-input { background: rgba(255,255,255,.1); colo
 .fin-form-wrap .cuota-form-inner { padding-top: 4px; }
 .fin-form-wrap .chips { flex-wrap: wrap; }
 .fin-form-wrap .chip { font-size: .82rem; padding: 8px 4px; }
+/* Sin opacity: apagar un texto ya secundario lo saca de contraste AA. Si algo
+   tiene que pesar menos, se baja con el color, no con la transparencia.
+   Y va sobre superficie de tarjeta: suelto encima del cielo daba 3,5:1 porque
+   el fondo real depende de qué franja del gradiente le toque. */
 .fin-pie {
-  margin: 4px 22px 18px;
-  font-size: .68rem; line-height: 1.5; color: var(--ink-soft); opacity: .85;
+  margin: 6px 16px 18px;
+  padding: 11px 14px;
+  border-radius: 14px;
+  background: var(--fin-surf);
+  border: 1px solid var(--fin-borde);
+  font-size: .72rem; line-height: 1.55; color: var(--ink-soft);
 }
 
 /* Aviso de categoría puesta sola al cargar un gasto */
@@ -1748,8 +2005,10 @@ body[data-theme="dark"] .fin-edit-input { background: rgba(255,255,255,.1); colo
 .fin-alerta-icono { font-size: 1.15rem; line-height: 1.2; text-align: center; }
 .fin-alerta-cuerpo { min-width: 0; }
 .fin-alerta-titulo { font-size: .88rem; font-weight: 800; color: var(--ink); }
+/* El cuerpo de la alerta es EL texto que se lee del panel: sube a .82rem y
+   line-height 1.55, que es donde deja de sentirse letra chica en el celular. */
 .fin-alerta-detalle {
-  font-size: .78rem; line-height: 1.5; color: var(--ink-soft); margin-top: 2px;
+  font-size: .82rem; line-height: 1.55; color: var(--ink-soft); margin-top: 3px;
 }
 .fin-alerta-detalle b { color: var(--ink); font-weight: 800; }
 .fin-alerta-acciones { display: flex; gap: 6px; margin-top: 9px; flex-wrap: wrap; }
@@ -1788,4 +2047,578 @@ body[data-theme="dark"] .fin-edit-input { background: rgba(255,255,255,.1); colo
 @media (max-width: 360px) {
   .tabbar .tab { font-size: .58rem; }
   .tabbar .tab-icon { font-size: 1.15rem; }
+}
+
+/* ====================================================================
+   AJUSTES — bottom sheet
+   Sheet y no vista propia: seis pestañas ya son las que entran en la tabbar
+   de un celular, y esto se abre dos veces por mes.
+   ==================================================================== */
+.aj-overlay {
+  position: fixed; inset: 0; z-index: 500;
+  background: rgba(12, 18, 26, 0);
+  display: flex; align-items: flex-end; justify-content: center;
+  transition: background .22s ease;
+  backdrop-filter: blur(0px);
+}
+.aj-overlay.abierto { background: rgba(12, 18, 26, .5); backdrop-filter: blur(3px); }
+
+.aj-sheet {
+  width: 100%; max-width: 520px;
+  max-height: 88dvh; overflow-y: auto;
+  padding: 10px 20px calc(24px + env(safe-area-inset-bottom));
+  border-radius: 26px 26px 0 0;
+  background: var(--fin-surf);
+  backdrop-filter: blur(30px) saturate(1.6);
+  -webkit-backdrop-filter: blur(30px) saturate(1.6);
+  border-top: 1px solid var(--fin-borde);
+  box-shadow: 0 -14px 44px rgba(0,0,0,.28);
+  transform: translateY(100%);
+  transition: transform .26s cubic-bezier(.2,.9,.3,1.05);
+}
+.aj-overlay.abierto .aj-sheet { transform: none; }
+/* En escritorio se centra como un diálogo: pegado abajo se ve raro con la
+   tabbar lateral y 1500px de ancho. */
+@media (min-width: 1024px) {
+  .aj-overlay { align-items: center; }
+  .aj-sheet { border-radius: 24px; max-width: 460px; max-height: 84dvh; }
+  .aj-grip { display: none; }
+}
+
+.aj-grip {
+  width: 38px; height: 4px; border-radius: 2px;
+  background: var(--ink-soft); opacity: .3;
+  margin: 0 auto 10px;
+}
+.aj-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+.aj-head h2 { font-size: 1.3rem; font-weight: 800; color: var(--ink); }
+.aj-cerrar {
+  border: none; background: var(--fin-rule); cursor: pointer;
+  width: 32px; height: 32px; border-radius: 50%;
+  font-size: .9rem; color: var(--ink-soft);
+}
+.aj-cerrar:active { transform: scale(.9); }
+
+.aj-seccion { padding: 14px 0; border-bottom: 1px solid var(--fin-rule); }
+.aj-seccion:last-of-type { border-bottom: none; }
+.aj-label {
+  font-size: .68rem; font-weight: 800; color: var(--ink-soft);
+  text-transform: uppercase; letter-spacing: .08em; margin-bottom: 8px;
+}
+.aj-seg { margin: 0; }
+.aj-ayuda { font-size: .74rem; line-height: 1.5; color: var(--ink-soft); margin-top: 8px; }
+.aj-ayuda b { color: var(--ink); font-weight: 800; }
+
+.aj-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.aj-chips .chip { flex: 1 1 auto; display: flex; flex-direction: column; gap: 1px; padding: 9px 12px; }
+.aj-chip-valor { font-size: .68rem; font-weight: 700; opacity: .75; }
+
+.aj-meta { display: flex; align-items: center; gap: 14px; }
+.aj-range { flex: 1; accent-color: var(--accent); height: 26px; }
+.aj-meta-valor {
+  font-size: 1.15rem; font-weight: 800; color: var(--ink);
+  min-width: 52px; text-align: right; font-variant-numeric: tabular-nums;
+}
+
+.aj-datos { display: flex; flex-direction: column; gap: 2px; }
+.aj-dato {
+  display: flex; justify-content: space-between; align-items: baseline;
+  gap: 10px; padding: 5px 0;
+  font-size: .82rem; color: var(--ink-soft); font-weight: 600;
+}
+.aj-dato b { color: var(--ink); font-weight: 800; font-variant-numeric: tabular-nums; }
+
+.aj-btn {
+  width: 100%; padding: 13px; border-radius: 14px;
+  border: 1px solid var(--fin-borde); background: var(--fin-rule);
+  font: 800 .9rem var(--font); color: var(--ink); cursor: pointer;
+}
+.aj-btn:active { transform: scale(.98); }
+/* Color propio y no `--fin-mal`: sobre el tinte del 10% ese naranja daba
+   4,36:1 y no llega a AA (0.9rem bold todavía cuenta como texto normal). */
+.aj-btn--peligro {
+  color: #8f3007;
+  background: color-mix(in srgb, var(--fin-mal) 10%, transparent);
+  border-color: color-mix(in srgb, var(--fin-mal) 30%, transparent);
+}
+body[data-theme="dark"] .aj-btn--peligro { color: #ffa76b; }
+.aj-pie { text-align: center; font-size: .68rem; color: var(--ink-soft); padding-top: 14px; }
+
+/* ====================================================================
+   INDICADORES — el cuadro de ratios
+   ==================================================================== */
+.fin-indicadores {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 8px;
+}
+.fin-ind {
+  position: relative;
+  padding: 10px 12px 10px 14px;
+  border-radius: 13px;
+  background: var(--fin-rule);
+  border: 1px solid transparent;
+}
+/* El semáforo va en una barrita lateral y NO sólo en el color del número:
+   con daltonismo rojo-verde el número solo no comunica nada. */
+.fin-ind::before {
+  content: '';
+  position: absolute; left: 0; top: 8px; bottom: 8px;
+  width: 3px; border-radius: 0 3px 3px 0;
+  background: var(--ink-soft);
+}
+.fin-ind--bien::before     { background: var(--fin-ok); }
+.fin-ind--atencion::before { background: var(--fin-cuota); }
+.fin-ind--mal::before      { background: var(--fin-mal); }
+.fin-ind--bien     { background: color-mix(in srgb, var(--fin-ok) 9%, transparent); }
+.fin-ind--atencion { background: color-mix(in srgb, var(--fin-cuota) 11%, transparent); }
+.fin-ind--mal      { background: color-mix(in srgb, var(--fin-mal) 11%, transparent); }
+
+.fin-ind-label {
+  font-size: .64rem; font-weight: 800; color: var(--ink-soft);
+  text-transform: uppercase; letter-spacing: .07em;
+}
+.fin-ind-valor {
+  font-size: 1.28rem; font-weight: 800; color: var(--ink);
+  letter-spacing: -.01em; margin-top: 1px; line-height: 1.2;
+}
+.fin-ind--mal .fin-ind-valor  { color: var(--fin-mal); }
+.fin-ind--bien .fin-ind-valor { color: var(--fin-ok); }
+.fin-ind-detalle { font-size: .7rem; color: var(--ink-soft); font-weight: 600; line-height: 1.4; margin-top: 2px; }
+.fin-ind-ayuda {
+  font-size: .68rem; color: var(--ink-soft); line-height: 1.5;
+  margin-top: 7px; padding-top: 7px; border-top: 1px solid var(--fin-rule);
+}
+
+/* ====================================================================
+   RITMO — cuánto te queda por día
+   ==================================================================== */
+.fin-ritmo {
+  margin: 12px 16px;
+  padding: 15px 16px 13px;
+  border-radius: var(--radius-lg);
+  background: var(--fin-surf);
+  border: 1px solid var(--fin-borde);
+  box-shadow: 0 6px 18px rgba(35,64,50,.07);
+}
+body[data-theme="dark"] .fin-ritmo { box-shadow: none; }
+.fin-ritmo--rojo { border-color: color-mix(in srgb, var(--fin-mal) 45%, transparent); }
+
+.fin-ritmo-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.fin-ritmo-key {
+  font-size: .66rem; font-weight: 800; color: var(--ink-soft);
+  text-transform: uppercase; letter-spacing: .09em;
+}
+.fin-ritmo-val { font-size: 1.7rem; font-weight: 800; letter-spacing: -.02em; line-height: 1.15; margin-top: 2px; }
+.fin-ritmo--rojo .fin-ritmo-val { color: var(--fin-mal); }
+.fin-ritmo-meta { text-align: right; font-size: .72rem; font-weight: 700; color: var(--ink-soft); line-height: 1.5; }
+
+.fin-ritmo-barras { margin: 12px 0 9px; display: grid; gap: 6px; }
+.fin-ritmo-fila { display: grid; grid-template-columns: 46px 1fr auto; align-items: center; gap: 9px; }
+.fin-ritmo-etq { font-size: .68rem; font-weight: 800; color: var(--ink-soft); }
+.fin-ritmo-track { height: 9px; border-radius: 5px; background: var(--fin-rule); overflow: hidden; }
+.fin-ritmo-bar { display: block; height: 100%; border-radius: 5px; transition: width .45s cubic-bezier(.3,.9,.3,1); }
+.fin-ritmo-bar--puede { background: var(--fin-ok); }
+.fin-ritmo-bar--ok    { background: var(--fin-var); }
+.fin-ritmo-bar--alto  { background: var(--fin-mal); }
+.fin-ritmo-num { font-size: .74rem; font-weight: 800; min-width: 54px; text-align: right; }
+.fin-ritmo-nota { font-size: .74rem; line-height: 1.5; color: var(--ink-soft); }
+.fin-ritmo-nota b { color: var(--ink); font-weight: 800; }
+
+/* ====================================================================
+   SUBTOTAL "lo paga el resumen" — por qué un fijo no suma en Caja
+   ==================================================================== */
+.fin-subtotal {
+  display: flex; flex-direction: column; gap: 1px;
+  margin-top: 6px; padding: 8px 10px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--fin-cuota) 10%, transparent);
+  font-size: .74rem; color: var(--ink-soft); line-height: 1.45;
+}
+.fin-subtotal b { color: var(--ink); font-weight: 800; }
+.fin-subtotal-nota { font-size: .68rem; font-weight: 600; }
+
+.fin-badge--tarjeta {
+  background: color-mix(in srgb, var(--fin-cuota) 18%, transparent);
+  color: var(--fin-cuota);
+}
+.fin-badge--clase {
+  background: var(--fin-rule); color: var(--ink-soft);
+  font-size: .6rem; padding: 1px 6px; border-radius: 999px;
+  font-weight: 800; text-transform: uppercase; letter-spacing: .04em;
+  margin-left: 5px;
+}
+
+/* ====================================================================
+   INVERSIONES
+   ==================================================================== */
+.fin-posiciones { margin-top: 4px; }
+.fin-pos {
+  display: grid; grid-template-columns: 26px 1fr auto;
+  align-items: center; gap: 9px;
+  padding: 9px 0; border-bottom: 1px solid var(--fin-rule);
+}
+.fin-pos:last-child { border-bottom: none; }
+.fin-pos-emoji { font-size: 1.05rem; text-align: center; }
+.fin-pos-info { min-width: 0; }
+.fin-pos-nombre {
+  font-size: .86rem; font-weight: 800; color: var(--ink);
+  display: flex; align-items: center; flex-wrap: wrap; gap: 2px;
+}
+.fin-pos-sub { font-size: .7rem; color: var(--ink-soft); font-weight: 600; margin-top: 1px; }
+.fin-pos-montos { text-align: right; }
+.fin-pos-monto { font-size: .88rem; font-weight: 800; }
+.fin-pos-peso { font-size: .66rem; color: var(--ink-soft); font-weight: 700; }
+
+/* Descomposición en vivo del form: invertido / costos / sale de tu caja */
+.inv-resumen {
+  margin-top: 4px; padding: 11px 13px;
+  border-radius: 13px;
+  background: var(--fin-rule);
+  font-size: .8rem;
+}
+.inv-resumen-fila {
+  display: flex; justify-content: space-between; align-items: baseline;
+  gap: 10px; padding: 3px 0; color: var(--ink-soft); font-weight: 600;
+}
+.inv-resumen-fila b { color: var(--ink); font-weight: 800; }
+.inv-resumen-fila--total {
+  margin-top: 4px; padding-top: 7px;
+  border-top: 1px solid var(--fin-borde);
+  font-size: .86rem;
+}
+.inv-resumen-pct { font-size: .7rem; color: var(--ink-soft); font-weight: 700; }
+
+/* Punto de equilibrio dentro del form: el número que decide si la operación
+   tenía sentido, mostrado ANTES de guardarla. */
+.inv-equilibrio {
+  margin-top: 9px; padding-top: 9px;
+  border-top: 1px dashed var(--fin-borde);
+}
+.inv-equilibrio-titulo {
+  font-size: .64rem; font-weight: 800; color: var(--ink-soft);
+  text-transform: uppercase; letter-spacing: .08em; margin-bottom: 3px;
+}
+.inv-equilibrio-nota {
+  font-size: .7rem; line-height: 1.45; color: var(--ink-soft); margin-top: 3px;
+}
+
+/* ---- Tesis ---- */
+.inv-tesis-form {
+  margin-top: 4px; padding: 12px 13px;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--fin-sub) 9%, transparent);
+  border: 1px solid color-mix(in srgb, var(--fin-sub) 24%, transparent);
+  display: flex; flex-direction: column; gap: 8px;
+}
+.inv-tesis-form-titulo {
+  font-size: .72rem; font-weight: 800; color: var(--ink);
+}
+.inv-tesis-form-titulo span { font-weight: 600; color: var(--ink-soft); }
+.inv-tesis-form textarea {
+  width: 100%; resize: vertical; min-height: 52px;
+  font: 600 .84rem var(--font); color: var(--ink);
+  background: var(--fin-surf);
+  border: 1px solid var(--fin-borde);
+  border-radius: 11px; padding: 10px 12px; outline: none;
+}
+.inv-tesis-form textarea::placeholder,
+.inv-tesis-form input::placeholder { color: var(--ink-soft); }
+/* "Vendo a [precio] antes del [fecha]" son cuatro cosas en una línea: en un
+   celular angosto el selector de fecha se salía de la pantalla. */
+.inv-tesis-form .cuota-num-row { flex-wrap: wrap; row-gap: 8px; }
+.inv-tesis-form .cuota-fecha-input { flex: 1 1 140px; min-width: 0; }
+.inv-tesis-form .cuota-num-input { flex: 1 1 90px; min-width: 0; }
+
+.inv-tesis-lista { display: flex; flex-direction: column; gap: 9px; }
+.inv-tesis {
+  padding: 11px 13px; border-radius: 14px;
+  background: var(--fin-rule);
+  border-left: 3px solid var(--ink-soft);
+}
+.inv-tesis--viva    { border-left-color: var(--fin-fijo); }
+.inv-tesis--vencida { border-left-color: var(--fin-cuota); background: color-mix(in srgb, var(--fin-cuota) 10%, transparent); }
+.inv-tesis--ok      { border-left-color: var(--fin-ok); }
+.inv-tesis--mal     { border-left-color: var(--fin-mal); }
+
+.inv-tesis-top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.inv-tesis-tic { font-size: .92rem; font-weight: 800; color: var(--ink); letter-spacing: .02em; }
+.inv-tesis-estado { font-size: .7rem; font-weight: 700; color: var(--ink-soft); text-align: right; }
+.inv-tesis-texto {
+  font-size: .8rem; line-height: 1.5; color: var(--ink-soft);
+  font-style: italic; margin-top: 4px;
+}
+.inv-tesis-nums {
+  display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 8px;
+}
+.inv-tesis-nums span {
+  display: flex; flex-direction: column;
+  font-size: .8rem; font-weight: 800; color: var(--ink);
+}
+.inv-tesis-nums i {
+  font-style: normal; font-size: .62rem; font-weight: 800; color: var(--ink-soft);
+  text-transform: uppercase; letter-spacing: .06em;
+}
+.inv-tesis-inval {
+  font-size: .72rem; line-height: 1.45; color: var(--ink-soft);
+  margin-top: 7px; padding-top: 6px; border-top: 1px solid var(--fin-borde);
+}
+.inv-tesis-alerta {
+  margin-top: 7px; padding: 7px 9px; border-radius: 9px;
+  background: color-mix(in srgb, var(--fin-mal) 14%, transparent);
+  font-size: .74rem; line-height: 1.45; color: var(--ink);
+}
+.inv-tesis-alerta b { font-weight: 800; }
+
+/* Scorecard: el número que ningún broker te muestra. */
+.inv-score {
+  margin-bottom: 11px; padding: 12px 14px;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--fin-fijo) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--fin-fijo) 26%, transparent);
+}
+.inv-score--corto { background: var(--fin-rule); border-color: var(--fin-borde); }
+.inv-score-cifra { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.inv-score-cifra b { font-size: 1.25rem; font-weight: 800; color: var(--ink); letter-spacing: -.01em; }
+.inv-score-cifra span { font-size: .74rem; font-weight: 700; color: var(--ink-soft); }
+.inv-score-nota { font-size: .76rem; line-height: 1.5; color: var(--ink-soft); margin-top: 5px; }
+.inv-score-nota b { font-weight: 800; }
+
+/* ====================================================================
+   CUOTAS — pagos, vencidas y recordatorios
+   ==================================================================== */
+.cuota-pie {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 10px; margin-top: 6px;
+}
+.cuota-pagar {
+  flex-shrink: 0;
+  border: none; cursor: pointer;
+  padding: 7px 13px; border-radius: 999px;
+  background: var(--accent); color: #fff;
+  font: 800 .74rem var(--font);
+  box-shadow: 0 2px 8px rgba(242,109,61,.28);
+}
+.cuota-pagar:active { transform: scale(.96); }
+body[data-theme="dark"] .cuota-pagar {
+  background: rgba(96,165,250,.18); color: #7cb6ff; box-shadow: none;
+}
+.cuota-undo {
+  border: none; background: none; cursor: pointer;
+  font-size: .95rem; color: var(--ink-soft); padding: 4px 6px; border-radius: 8px;
+}
+.cuota-undo:active { background: var(--fin-rule); }
+.cuota-card--vencida { box-shadow: inset 3px 0 0 var(--fin-mal); }
+
+.resumen-accion {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 10px; flex-wrap: wrap;
+  margin-top: 9px; padding-top: 9px;
+  border-top: 1px solid var(--fin-rule);
+}
+.resumen-accion--vencida { border-top-color: var(--fin-mal); }
+.resumen-accion-info { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.resumen-accion-info b { font-size: .82rem; color: var(--ink); font-weight: 800; }
+.resumen-accion-info span { font-size: .7rem; color: var(--ink-soft); font-weight: 600; }
+.resumen-accion-btns { display: flex; gap: 6px; flex-wrap: wrap; }
+
+.cuotas-vencida {
+  display: grid; grid-template-columns: 26px 1fr;
+  gap: 9px; margin: 12px 16px; padding: 12px 14px;
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--fin-mal) 12%, var(--fin-surf));
+  border: 1px solid color-mix(in srgb, var(--fin-mal) 40%, transparent);
+}
+.cuotas-vencida-icono { font-size: 1.15rem; text-align: center; }
+.cuotas-vencida-titulo { font-size: .88rem; font-weight: 800; color: var(--ink); }
+.cuotas-vencida-detalle { font-size: .78rem; line-height: 1.5; color: var(--ink-soft); margin-top: 2px; }
+.cuotas-vencida-detalle b { color: var(--ink); font-weight: 800; }
+.cuotas-vencida-btns { margin-top: 9px; }
+
+/* ---- Diálogo de recordatorio ---- */
+.rec-card { text-align: left; max-width: 340px; }
+.rec-sub {
+  font-size: .82rem; line-height: 1.5; color: var(--ink-soft);
+  margin: 4px 0 14px;
+}
+.rec-sub b { color: var(--ink); font-weight: 800; }
+.rec-campo { margin-bottom: 13px; }
+.rec-label {
+  display: block; margin-bottom: 6px;
+  font-size: .68rem; font-weight: 800; color: var(--ink-soft);
+  text-transform: uppercase; letter-spacing: .07em;
+}
+.rec-horas { display: flex; flex-wrap: wrap; gap: 5px; }
+.rec-horas .chip { flex: 0 0 auto; padding: 6px 11px; font-size: .78rem; }
+.rec-hora-input {
+  width: 100%; margin-top: 7px; padding: 9px 11px;
+  border: 1px solid var(--fin-borde); border-radius: 11px;
+  background: var(--fin-rule); color: var(--ink);
+  font: 700 .86rem var(--font);
+}
+.rec-check {
+  display: flex; align-items: flex-start; gap: 8px;
+  font-size: .76rem; line-height: 1.45; color: var(--ink-soft);
+  margin-bottom: 4px; cursor: pointer;
+}
+.rec-check input { margin-top: 2px; accent-color: var(--accent); flex-shrink: 0; }
+
+/* ====================================================================
+   ESCRITORIO ANCHO — dashboard de dos columnas
+   El intento anterior repartía las tarjetas en 3-4 columnas por
+   auto-placement y quedaba peor que en el celular: las alertas, marcadas
+   como fila completa, se comían 570px de alto ANTES del primer número, y
+   los <details> colapsados (1px de alto, ancho completo) cortaban la
+   grilla en pedazos dejando huecos.
+   Acá hay dos columnas con roles distintos, como un dashboard de verdad:
+   IZQUIERDA = los números (hero, KPIs, ritmo, indicadores, tablas),
+   DERECHA   = el feed lateral (alertas, ingresos, ahorro, inversiones).
+   Cada bloque tiene su columna asignada a mano — nada de auto-placement.
+   ==================================================================== */
+@media (min-width: 1280px) {
+  #app {
+    width: min(96vw, 1560px);
+    flex: 0 0 min(96vw, 1560px);
+    height: min(92dvh, 1040px);
+    max-height: 92dvh;
+  }
+  .tabbar { width: 104px; }
+  .tab { font-size: .7rem; }
+  .tabbar .tab-icon { font-size: 1.45rem; }
+
+  #view-panel.active {
+    display: grid;
+    grid-template-columns: minmax(0, 1.75fr) minmax(340px, 1fr);
+    /* `dense` es obligatorio acá: sin él, el cursor del grid no retrocede y
+       como las alertas (columna 2) aparecen antes en el DOM, el hero caía a
+       la fila siguiente dejando 645px de columna izquierda en blanco. */
+    grid-auto-flow: row dense;
+    align-content: start;
+    gap: 14px 18px;
+    padding-right: 4px;
+  }
+  #view-panel .view-header,
+  #view-panel .fin-base-wrap { grid-column: 1 / -1; }
+
+  /* Columna izquierda: los números, en orden de lectura. */
+  #view-panel #fin-hero,
+  #view-panel #fin-kpis,
+  #view-panel #fin-ritmo,
+  #view-panel #fin-indicadores,
+  #view-panel #fin-fijos,
+  #view-panel #fin-subs,
+  #view-panel #fin-form-concepto,
+  #view-panel #fin-deuda,
+  #view-panel #fin-flujo,
+  #view-panel #fin-proyeccion,
+  #view-panel .fin-pie { grid-column: 1; }
+
+  /* Columna derecha: lo que se hojea, no lo que se compara. */
+  #view-panel #fin-alertas,
+  #view-panel #fin-ingresos,
+  #view-panel #fin-ahorro,
+  #view-panel #fin-form-ahorro,
+  #view-panel #fin-reintegros,
+  #view-panel #fin-inversiones,
+  #view-panel #fin-tesis,
+  #view-panel #fin-mercado,
+  #view-panel #fin-form-inversion,
+  #view-panel #fin-medios,
+  #view-panel #fin-form-medio { grid-column: 2; }
+
+  /* Sin margen lateral propio: la grilla ya separa las columnas. */
+  #view-panel .fin-card,
+  #view-panel .fin-hero,
+  #view-panel .fin-ritmo,
+  #view-panel .fin-form-wrap,
+  #view-panel .fin-tiles,
+  #view-panel .fin-indicadores,
+  #view-panel .fin-pie,
+  #view-panel .fin-base-ayuda { margin-left: 0; margin-right: 0; }
+
+  /* Con el ancho de la columna izquierda entran los 4 tiles y los 6
+     indicadores en una sola fila: se comparan de un vistazo. */
+  #view-panel .fin-tiles { grid-template-columns: repeat(4, 1fr); }
+  #view-panel .fin-indicadores { grid-template-columns: repeat(6, 1fr); }
+  #view-panel .fin-tile { min-height: 124px; }
+
+  /* El hero es la portada: acá tiene lugar para respirar de verdad. */
+  #view-panel .fin-hero { padding: 22px 26px 18px; }
+  #view-panel .fin-hero-val { font-size: 2.5rem; }
+  #view-panel .fin-hero-usd { font-size: .95rem; }
+  #view-panel .fin-alloc { height: 12px; margin: 18px 0 13px; }
+  #view-panel .fin-hero-linea { font-size: .88rem; }
+  #view-panel .fin-desg { padding: 7px 0; }
+  #view-panel .fin-desg-label { font-size: .88rem; }
+  #view-panel .fin-desg-monto { font-size: .92rem; min-width: 120px; }
+
+  #view-panel .fin-ritmo-val { font-size: 2.1rem; }
+
+  /* Las alertas son un feed: ocupan tres filas de la columna derecha (el
+     tramo que a la izquierda cubren hero + KPIs + ritmo) y se alinean
+     arriba. Sin el `span 3`, el alto de la fila lo fijaba la tarjeta más
+     alta de las dos columnas y quedaba un hueco enorme bajo el hero.
+     Alto acotado con scroll propio para que nunca empujen los números
+     abajo del pliegue, por muchas alertas que haya. */
+  #view-panel #fin-alertas {
+    grid-row: span 3;
+    align-self: start;
+  }
+  #view-panel #fin-alertas .fin-card {
+    max-height: min(56vh, 620px);
+    overflow-y: auto;
+    scrollbar-width: thin;
+  }
+  #view-panel .fin-alerta { grid-template-columns: 24px 1fr; }
+
+  /* Las tablas de conceptos aprovechan el ancho: el sparkline deja de ser
+     una mancha de 40px y el historial muestra los 6 meses completos. */
+  #view-panel .fin-fila-spark { min-width: 120px; }
+  #view-panel .fin-hist { gap: 6px; }
+
+  /* Las demás vistas centran su contenido en vez de estirarse a 1400px de
+     ancho, que en una lista de gastos es ilegible (líneas larguísimas). */
+  #view-gastos.active > *,
+  #view-cuotas.active > *,
+  #view-notas.active > * { max-width: 680px; width: 100%; margin-inline: auto; }
+  #view-bosque.active > * { max-width: 1000px; width: 100%; margin-inline: auto; }
+}
+
+/* Monitores muy anchos: entra una tercera columna para las tablas. */
+@media (min-width: 1800px) {
+  #app { width: min(96vw, 1780px); flex: 0 0 min(96vw, 1780px); }
+  #view-panel.active { grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr) minmax(340px, .9fr); }
+  #view-panel #fin-subs,
+  #view-panel #fin-form-concepto,
+  #view-panel #fin-deuda,
+  #view-panel #fin-proyeccion { grid-column: 2; }
+  #view-panel #fin-hero,
+  #view-panel #fin-kpis,
+  #view-panel #fin-ritmo,
+  #view-panel #fin-indicadores,
+  #view-panel #fin-flujo { grid-column: 1 / 3; }
+  #view-panel #fin-alertas,
+  #view-panel #fin-ingresos,
+  #view-panel #fin-ahorro,
+  #view-panel #fin-form-ahorro,
+  #view-panel #fin-reintegros,
+  #view-panel #fin-inversiones,
+  #view-panel #fin-tesis,
+  #view-panel #fin-mercado,
+  #view-panel #fin-form-inversion,
+  #view-panel #fin-medios,
+  #view-panel #fin-form-medio { grid-column: 3; }
+  #view-panel .fin-pie { grid-column: 1 / 3; }
+}
+
+/* ====================================================================
+   MÓVIL — respiro y jerarquía
+   ==================================================================== */
+@media (max-width: 460px) {
+  /* Los montos grandes se cortaban en dos líneas con sueldos de 7 dígitos. */
+  .fin-hero-val { font-size: clamp(1.25rem, 6.6vw, 1.62rem); }
+  .fin-ritmo-val { font-size: clamp(1.35rem, 7vw, 1.7rem); }
+  .fin-tile-val { font-size: clamp(1.1rem, 5.4vw, 1.32rem); }
+  .fin-indicadores { grid-template-columns: 1fr 1fr; }
+  .fin-alerta-acciones .fin-btn { flex: 1 1 auto; }
 }

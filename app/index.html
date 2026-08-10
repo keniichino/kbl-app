@@ -162,6 +162,8 @@
         <p class="view-sub" id="cuotas-mes-label"></p>
       </header>
 
+      <div id="cuotas-vencidas"></div>
+
       <div class="gasto-hero">
         <div class="gasto-total" id="cuotas-total">$ 0</div>
         <div class="gasto-total-sub">próximo vencimiento</div>
@@ -228,6 +230,8 @@
       <div id="fin-alertas"></div>
       <div id="fin-hero"></div>
       <div id="fin-kpis"></div>
+      <div id="fin-ritmo"></div>
+      <div id="fin-indicadores"></div>
 
       <div id="fin-ingresos"></div>
       <div id="fin-fijos"></div>
@@ -282,6 +286,69 @@
             <span class="cuota-num-sep">% del ingreso</span>
           </div>
           <button class="btn-primary" id="btn-ahorro-guardar">Guardar movimiento</button>
+        </div>
+      </details>
+
+      <div id="fin-reintegros"></div>
+      <div id="fin-inversiones"></div>
+      <div id="fin-tesis"></div>
+      <div id="fin-mercado"></div>
+
+      <details class="fin-form-wrap" id="fin-form-inversion">
+        <summary class="cuota-form-toggle">＋ Registrar operación de inversión</summary>
+        <div class="cuota-form-inner">
+          <button class="btn-foto" id="btn-inv-foto" type="button">📷 Cargar por foto del comprobante</button>
+          <input type="file" id="inv-foto-input" accept="image/*" hidden>
+          <p class="gasto-foto-estado" id="inv-foto-estado" hidden></p>
+
+          <div class="viewer-species" id="inv-tipo" role="group" aria-label="Tipo de operación">
+            <button type="button" class="seg-btn selected" data-tipo-inv="compra">Compra</button>
+            <button type="button" class="seg-btn" data-tipo-inv="venta">Venta</button>
+            <button type="button" class="seg-btn" data-tipo-inv="dividendo">Dividendo</button>
+          </div>
+
+          <input id="inv-instrumento" type="text" placeholder="Instrumento (NFLX, AL30, BTC…)"
+                 autocomplete="off" autocapitalize="characters" spellcheck="false">
+          <div class="cat-chips" id="inv-clase"></div>
+
+          <div class="cuota-num-row">
+            <label class="cuota-num-label">Cantidad</label>
+            <input id="inv-cantidad" type="text" inputmode="decimal" class="cuota-num-input" placeholder="0">
+          </div>
+          <div class="monto-row">
+            <input id="inv-precio" type="text" inputmode="decimal" placeholder="Precio unitario" autocomplete="off">
+            <div class="seg-moneda" id="inv-moneda" role="group" aria-label="Moneda">
+              <button type="button" class="seg-op selected" data-moneda="ARS">$</button>
+              <button type="button" class="seg-op" data-moneda="USD">US$</button>
+            </div>
+          </div>
+          <div class="cuota-num-row">
+            <label class="cuota-num-label">Comisiones</label>
+            <input id="inv-comisiones" type="text" inputmode="decimal" class="cuota-num-input" placeholder="0">
+            <label class="cuota-num-label">Gastos</label>
+            <input id="inv-gastos" type="text" inputmode="decimal" class="cuota-num-input" placeholder="0">
+          </div>
+          <div class="cuota-num-row">
+            <label class="cuota-num-label">Fecha</label>
+            <input id="inv-fecha" type="date" class="cuota-fecha-input">
+          </div>
+          <input id="inv-broker" type="text" placeholder="Broker (IOL, Cocos, Balanz…)" autocomplete="off">
+
+          <div class="inv-tesis-form">
+            <div class="inv-tesis-form-titulo">Tu tesis <span>— escribila antes de saber cómo salió</span></div>
+            <textarea id="inv-tesis" rows="2" placeholder="¿Por qué comprás esto? Ej: sale el tráiler y espero que el papel reaccione"></textarea>
+            <div class="cuota-num-row">
+              <label class="cuota-num-label">Vendo a</label>
+              <input id="inv-objetivo" type="text" inputmode="decimal" class="cuota-num-input" placeholder="precio">
+              <label class="cuota-num-label">antes del</label>
+              <input id="inv-fecha-objetivo" type="date" class="cuota-fecha-input">
+            </div>
+            <input id="inv-invalidacion" type="text" autocomplete="off"
+                   placeholder="¿Qué te haría estar equivocado? Ej: si baja 10% o si el anuncio se posterga">
+          </div>
+
+          <div class="inv-resumen" id="inv-resumen" hidden></div>
+          <button class="btn-primary" id="btn-inv-guardar">Guardar operación</button>
         </div>
       </details>
 
