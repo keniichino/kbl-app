@@ -614,8 +614,11 @@ def add_pad(center, radius, tilt=0.0, mat=None, seed_extra=0):
     needle_ob = get_bonsai_needle(mat if mat is not None else MAT_COPA)
     # Densidad subida ~3x: la primera pasada quedo demasiado rala/pelada
     # (se veian huecos grandes de tronco entre las almohadillas).
-    count = max(450, round(radius * radius * 4200))
-    add_leaf_particles(hull, needle_ob, count=count, size=1.15,
+    # Subida de 4200 a 7000 al engrosar el tronco: un tronco mas ancho tapa las
+    # hojas que antes asomaban por detras, y con la densidad vieja las
+    # almohadillas quedaban ralas, como manchones sueltos en vez de masas.
+    count = max(650, round(radius * radius * 7000))
+    add_leaf_particles(hull, needle_ob, count=count, size=1.32,
                        size_random=0.35, rot_random=0.55,
                        seed=SEED + start + seed_extra, name="agujas")
     return hull
@@ -1149,15 +1152,24 @@ def build_bonsai():
     cu.bevel_resolution = 8    # mas resolucion que el default (5): la corteza
     cu.resolution_u = 16       # rugosa via displace necesita mas geometria para leerse
     # curva en S bien marcada: grueso en la base, se afina y serpentea al subir
+    # Los radios de arriba eran 0.100 / 0.078 / 0.058, MENORES que el strength
+    # del displace de corteza (0.075) que se aplica mas abajo: el modificador
+    # empujaba los vertices mas lejos que el propio grosor del tronco, lo daba
+    # vuelta del reves y la mitad superior desaparecia del render. Eso es el
+    # "tramo invisible" -- y por eso las almohadillas de arriba parecian flotar:
+    # no flotaban, se habia borrado la rama que las sostenia.
+    # Ahora ninguno baja de 0.095, que es ~2.7x el displace ya reducido. El
+    # primer intento los subio a 0.14 y el bonsai quedaba con tronco de baobab:
+    # sobrevivia al displace pero perdia la silueta afinada que lo hace bonsai.
     trunk_pts = [
-        (Vector((0.00,  0.00, 0.00)), 0.34),
-        (Vector((0.20,  0.05, 0.22)), 0.29),
-        (Vector((0.44, -0.07, 0.50)), 0.225),
-        (Vector((0.18, -0.20, 0.82)), 0.175),
-        (Vector((-0.30, -0.06, 1.10)), 0.135),
-        (Vector((-0.42,  0.12, 1.38)), 0.100),
-        (Vector((-0.10,  0.14, 1.62)), 0.078),
-        (Vector((0.18,  0.02, 1.86)), 0.058),
+        (Vector((0.00,  0.00, 0.00)), 0.32),
+        (Vector((0.20,  0.05, 0.22)), 0.27),
+        (Vector((0.44, -0.07, 0.50)), 0.215),
+        (Vector((0.18, -0.20, 0.82)), 0.170),
+        (Vector((-0.30, -0.06, 1.10)), 0.140),
+        (Vector((-0.42,  0.12, 1.38)), 0.120),
+        (Vector((-0.10,  0.14, 1.62)), 0.105),
+        (Vector((0.18,  0.02, 1.86)), 0.095),
     ]
     add_spline(cu, trunk_pts)
 
@@ -1165,25 +1177,44 @@ def build_bonsai():
 
     def branch_to(anchor, direction, length, r0, up1=-0.02, up2=0.48):
         """Rama corta que primero cae/se abre (estilo podado) y despues
-        levanta la punta -> silueta clasica que sostiene la almohadilla."""
+        levanta la punta -> silueta clasica que sostiene la almohadilla.
+
+        El afinado va a 0.75 / 0.55 del radio base (antes 0.55 / 0.28): con el
+        viejo, la punta quedaba en 0.011 contra un displace de 0.075 y la rama
+        entera se desintegraba en el render -- la almohadilla quedaba colgada
+        de nada."""
         d = Vector(direction).normalized()
-        _, (mid, midd) = grow(cu, anchor, d, length * 0.55, r0, r0 * 0.55,
+        _, (mid, midd) = grow(cu, anchor, d, length * 0.55, r0, r0 * 0.78,
                               jitter=0.12, up=up1)
-        _, (tip, tipd) = grow(cu, mid, midd, length * 0.45, r0 * 0.55, r0 * 0.28,
+        _, (tip, tipd) = grow(cu, mid, midd, length * 0.45, r0 * 0.78, r0 * 0.62,
                               jitter=0.12, up=up2)
         return tip
 
+    # Radio base minimo 0.085: su punta (x0.62 = 0.053) sigue por encima del
+    # displace de 0.035, que es la condicion para que la rama no se desintegre.
     anchors = [
-        (trunk_pts[2][0], ( 0.85,  0.30, -0.05), 0.45, 0.075),
-        (trunk_pts[3][0], (-0.72, -0.26,  0.05), 0.43, 0.062),
-        (trunk_pts[5][0], ( 0.48, -0.62,  0.10), 0.38, 0.050),
-        (trunk_pts[6][0], (-0.55,  0.46,  0.20), 0.32, 0.040),
+        (trunk_pts[2][0], ( 0.85,  0.30, -0.05), 0.45, 0.115),
+        (trunk_pts[3][0], (-0.72, -0.26,  0.05), 0.43, 0.105),
+        (trunk_pts[5][0], ( 0.48, -0.62,  0.10), 0.38, 0.095),
+        (trunk_pts[6][0], (-0.55,  0.46,  0.20), 0.32, 0.085),
     ]
     # IMPORTANTE: todas las ramas (grow -> cu.splines.new) tienen que crearse
     # ANTES de convertir el tronco a mesh; si no, quedan en un datablock huerfano
     # y no se ven (bug detectado en la 1ra iteracion: las ramas no aparecian).
-    pad_centers = [branch_to(a, d, l, r) for a, d, l, r in anchors]
-    pad_centers.append(trunk_pts[-1][0] + Vector((0.08, -0.02, 0.16)))  # apice
+    #
+    # La almohadilla NO se centra en la punta de la rama sino a ~70% del
+    # recorrido anclaje->punta. Centrandola en la punta, el follaje colgaba
+    # del extremo y quedaba un tramo de rama desnudo entre el tronco y el
+    # verde: a tamaño completo casi no se nota, pero al achicar el arbol para
+    # las etapas tempranas la rama pelada queda evidente y el follaje se lee
+    # "despegado" (defecto anotado en TAREAS.md que dejo al bonsai afuera de
+    # la Fase B). Con el lerp, la almohadilla envuelve la rama y toca el tronco
+    # en las 4 etapas.
+    pad_centers = []
+    for (a, d, l, r) in anchors:
+        tip = branch_to(a, d, l, r)
+        pad_centers.append(a.lerp(tip, 0.70))
+    pad_centers.append(trunk_pts[-1][0] + Vector((0.06, -0.02, 0.10)))  # apice
 
     # corteza vieja/rugosa: displace sobre el tronco+ramas ya completos (no solo
     # en la copa). Displace no aplica a objetos CURVE -> se convierte a MESH.
@@ -1196,13 +1227,17 @@ def build_bonsai():
     tex_bark.turbulence = 6.0
     mod = trunk_ob.modifiers.new("bark_disp", 'DISPLACE')
     mod.texture = tex_bark
-    mod.strength = 0.075
+    # 0.075 era mas que el radio de las ramas finas: el modificador las daba
+    # vuelta del reves y desaparecian. A 0.035 la corteza se sigue leyendo
+    # rugosa y permite mantener el tronco afinado arriba (que es lo que le da
+    # la silueta de bonsai) sin romperlo.
+    mod.strength = 0.035
     mod.mid_level = 0.5
     tex_bark2 = bpy.data.textures.new("bark_fino", 'CLOUDS')
     tex_bark2.noise_scale = 0.06
     mod3 = trunk_ob.modifiers.new("bark_disp_fino", 'DISPLACE')
     mod3.texture = tex_bark2
-    mod3.strength = 0.025
+    mod3.strength = 0.012
     bpy.ops.object.shade_smooth()
     trunk_ob.select_set(False)
 
@@ -1517,6 +1552,18 @@ if MADUREZ < 1.0:
         # tocarlos escalaria las hojas dos veces.
         if ob.hide_render or ob.name.endswith('_ob'):
             continue
+        # OJO: un objeto con padre hereda el transform, y su `location` es
+        # RELATIVA al padre. Escalarla objeto por objeto desarma el grupo: cada
+        # pieza se mueve hacia el origen LOCAL en vez de hacia el suelo, y las
+        # que estan lejos del centro se separan de las que estan cerca.
+        # El bonsai agrupa tronco, ramas y almohadillas bajo
+        # `bonsai_canopy_root`, asi que esto le partia el arbol: el follaje
+        # quedaba flotando despegado del tronco en las etapas jovenes (era EL
+        # defecto por el que el bonsai habia quedado afuera de la Fase B).
+        # Los hijos se saltean y se escala el root mas abajo -- la jerarquia se
+        # encarga de mantener las proporciones.
+        if ob.parent is not None:
+            continue
         ob.scale = tuple(s * m for s in ob.scale)
         ob.location = tuple(c * m for c in ob.location)  # ancla en el suelo (z=0)
         tocados += 1
@@ -1528,6 +1575,17 @@ if MADUREZ < 1.0:
             # y la hoja se agranda en proporcion (queda chica en absoluto, pero
             # grande respecto a la planta, como en un plantin de verdad)
             s.particle_size = s.particle_size * (1.0 / m) ** 0.45
+    # Roots de agrupacion (EMPTY): se escalan aca, DESPUES de los sueltos, para
+    # que sus hijos hereden una sola escala coherente. El loop de arriba los
+    # ignora por el filtro de tipo, asi que sin esto el bonsai no se atenuaba.
+    for ob in list(scene.objects):
+        if ob.type != 'EMPTY' or ob.name not in ("cabeza", "bonsai_canopy_root"):
+            continue
+        if ob.parent is not None:
+            continue
+        ob.scale = tuple(s * m for s in ob.scale)
+        ob.location = tuple(c * m for c in ob.location)
+        tocados += 1
     print("=== ETAPA %d madurez %.2f -> %d objetos de planta escalados" % (ETAPA, m, tocados))
 else:
     print("=== ETAPA %d (maduro): geometria sin atenuar" % ETAPA)

@@ -12,11 +12,15 @@
 #   blender --background ESPECIE_isla.blend --python render_species.py -- ESPECIE x --solo-encuadre
 #
 # Afuera por ahora:
-#   bonsai -> su follaje viene despegado del tronco (defecto previo al encuadre
-#             automatico) y achicarlo lo hace evidente.
-#   flor   -> su geometria final (la rosa) la arma render_species.py reemplazando
-#             la cosmos, asi que atenuar el .blend no la toca.
-#   Ambas siguen creciendo por escala en la app (fallback de app.js).
+#   flor -> su geometria final (la rosa) la arma render_species.py reemplazando
+#           la cosmos, asi que atenuar el .blend no la toca. Sigue creciendo por
+#           escala en la app (fallback de app.js).
+#
+# El bonsai VOLVIO al lote (2026-08-08): su follaje venia despegado porque las
+# almohadillas se centraban en la PUNTA de la rama y dejaban un tramo desnudo
+# entre el tronco y el verde. Ahora se centran al 70% del recorrido
+# anclaje->punta (a.lerp(tip, 0.70) en especies_isla.py), asi que envuelven la
+# rama y aguantan el achicado de las etapas tempranas.
 set -euo pipefail
 
 BLENDER="/c/Program Files/Blender Foundation/Blender 5.2/blender.exe"
@@ -24,7 +28,7 @@ BASE="G:/Mi unidad/KBL APP Personal"
 cd "$BASE/blender"
 
 # especie:dist:height (encuadre de la etapa madura)
-ESPECIES="arbolito:12.3582:0.8404 roble:12.3344:1.5391 sakura:12.4087:1.4687"
+ESPECIES="arbolito:12.3582:0.8404 roble:12.3344:1.5391 sakura:12.4087:1.4687 bonsai:12.3106:1.4618"
 ETAPAS="0 1 2"
 
 for spec in $ESPECIES; do

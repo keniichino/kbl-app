@@ -80,9 +80,19 @@ export function initBosqueVuelo(pista, islas) {
       const x = d * SEPARACION;
       const z = -abs * 80;
       const escala = Math.max(0.5, 1 - abs * 0.24);
-      const opacidad = Math.max(0, 1 - abs * 0.5);
+      // Antes la profundidad se hacía sólo bajando la opacidad (0,5 en la isla
+      // de al lado): un árbol al 50% no lee como "está más atrás", lee como
+      // "está roto / a medio cargar" — el follaje fino se transparenta y el
+      // tronco se ve partido. Ahora la distancia la da el DESENFOQUE, que es
+      // como se percibe la profundidad de verdad, y la opacidad no baja de
+      // 0,72 hasta que la isla está por salir del cuadro.
+      const opacidad = abs <= 1 ? 1 - abs * 0.28 : Math.max(0, 0.72 - (abs - 1) * 0.52);
+      const blur = Math.min(abs * 1.6, 4);
       s.slot.style.transform = `translateX(${x.toFixed(1)}px) translateZ(${z.toFixed(0)}px) scale(${escala.toFixed(3)})`;
       s.slot.style.opacity = opacidad.toFixed(2);
+      s.slot.style.filter = blur > 0.15
+        ? `blur(${blur.toFixed(2)}px) saturate(${(1 - abs * 0.14).toFixed(2)})`
+        : 'none';
       s.slot.style.zIndex = String(200 - Math.round(abs * 20));
       s.slot.style.pointerEvents = abs < 1.5 ? 'auto' : 'none';
     });
