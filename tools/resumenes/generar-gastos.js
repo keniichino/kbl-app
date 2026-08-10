@@ -51,9 +51,13 @@ const todos = [...galicia, ...mp]
   .sort((a, b) => a.fecha.localeCompare(b.fecha));
 
 // Dedup entre lotes (un consumo puede venir de dos parseos distintos).
+// El comprobante va en la clave: sin el, dos consumos reales del mismo dia,
+// mismo comercio y mismo monto se contaban como uno solo (JUAN VALDEZ del
+// 09/03 son dos cafes, comprobantes 04657 y 04658). Lo que si viene repetido
+// entre lotes trae el mismo comprobante, asi que el dedupe no pierde nada.
 const vistos = new Set();
 const filas = todos.filter((c) => {
-  const k = `${c.tarjeta}|${c.fecha}|${Math.round(c.monto * 100)}|${(c.descripcion || '').slice(0, 20)}`;
+  const k = `${c.tarjeta}|${c.fecha}|${Math.round(c.monto * 100)}|${(c.descripcion || '').slice(0, 20)}|${c.comprobante || ''}`;
   if (vistos.has(k)) return false;
   vistos.add(k);
   return true;

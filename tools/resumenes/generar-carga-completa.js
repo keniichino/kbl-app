@@ -43,7 +43,13 @@ const vistos = new Set();
 const gastos = [...galicia, ...mp]
   .filter((c) => !c.cuota && c.fecha >= DESDE && !YA_DECLARADO.test(c.descripcion) && c.monto > 0)
   .filter((c) => {
-    const k = `${c.tarjeta}|${c.fecha}|${Math.round(c.monto * 100)}|${(c.descripcion || '').slice(0, 20)}`;
+    // El comprobante va en la clave: sin el, dos consumos reales del mismo dia,
+    // mismo comercio y mismo monto se contaban como uno y el segundo se perdia.
+    // Pasa de verdad: JUAN VALDEZ del 09/03 son dos cafes, comprobantes 04657 y
+    // 04658, los dos en el resumen de abril. Para lo que si viene repetido en
+    // dos resumenes distintos el comprobante es el mismo, asi que el dedupe
+    // entre lotes sigue funcionando igual.
+    const k = `${c.tarjeta}|${c.fecha}|${Math.round(c.monto * 100)}|${(c.descripcion || '').slice(0, 20)}|${c.comprobante || ''}`;
     if (vistos.has(k)) return false;
     vistos.add(k);
     return true;
