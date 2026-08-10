@@ -137,8 +137,22 @@ for (const f of archivos) {
     if (!fecha) continue;
     let desc = g[3].trim();
     // Sólo es cuota si estamos en la sección de cuotas; si no, es el período.
-    const cuota = seccion === 'cuota' ? (g[4] || null) : null;
-    const periodoLinea = seccion !== 'cuota' ? (g[4] || null) : null;
+    //
+    // Salvo en el resumen de Visa, que NO trae la sección "CUOTAS DEL MES": cae
+    // todo bajo "DETALLE DEL CONSUMO" y sus cuotas venían clasificadas como
+    // compras. Efecto: cada cuota mensual entraba como un consumo nuevo con la
+    // fecha de la compra original (un plan de 3 cuotas = 3 gastos el mismo día)
+    // y el plan no aparecía como deuda en ningún lado. En 303 consumos de Visa
+    // el parser detectaba 0 cuotas contra 61 de Mastercard.
+    //
+    // Se distinguen por el segundo número: como período es el AÑO (07/26 =
+    // julio 2026), como cuota es el total del plan (02/09 = la 2 de 9). Un año
+    // fuera de 2024-2028 en un resumen de 2026 no existe, así que es una cuota.
+    const ANIOS_PLAUSIBLES = /^(2[4-8])$/;
+    const nn = g[4] || null;
+    const esCuotaDisfrazada = seccion !== 'cuota' && nn && !ANIOS_PLAUSIBLES.test(nn.split('/')[1]);
+    const cuota = seccion === 'cuota' || esCuotaDisfrazada ? nn : null;
+    const periodoLinea = seccion === 'cuota' || esCuotaDisfrazada ? null : nn;
     const m1 = num(g[6]);
     const m2 = g[7] != null ? num(g[7]) : null;
     if (m1 == null) continue;
