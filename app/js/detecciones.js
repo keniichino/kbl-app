@@ -370,15 +370,27 @@ function duplicados(ctx) {
   return out.slice(0, 3);
 }
 
-/** Vencimiento de resumen cerca, por tarjeta. */
+/**
+ * Vencimiento de resumen cerca, por tarjeta.
+ *
+ * El resumen cobra DOS cosas: las cuotas que vencen y todo lo que compraste en
+ * un pago dentro del período. Sumar sólo las cuotas es el error peligroso —
+ * decía "el 14 tenés que pagar $269.095" cuando el débito real era $600.849 y
+ * el aviso servía para juntar la plata equivocada.
+ */
 function vencimientos(ctx) {
   const hoy = new Date();
   const hoyStr = hoyIso();
+  const credito = ctx.credito || TARJETAS_CREDITO;
   const porTarjeta = new Map();
+  // El día sale del medio si está cargado ("Bancos y tarjetas"); si no, del
+  // vencimiento de la próxima cuota, como antes.
+  for (const m of (ctx.medios || [])) {
+    if (credito.has(m.key) && m.diaVencimiento) porTarjeta.set(m.key, m.diaVencimiento);
+  }
   for (const c of ctx.cuotas) {
-    if (c.estado !== 'activa' || !TARJETAS_CREDITO.has(c.tarjeta)) continue;
-    const dia = Number(c.fecha_primer_venc.slice(8, 10));
-    if (!porTarjeta.has(c.tarjeta)) porTarjeta.set(c.tarjeta, dia);
+    if (c.estado !== 'activa' || !credito.has(c.tarjeta)) continue;
+    if (!porTarjeta.has(c.tarjeta)) porTarjeta.set(c.tarjeta, Number(c.fecha_primer_venc.slice(8, 10)));
   }
 
   const out = [];
@@ -387,15 +399,27 @@ function vencimientos(ctx) {
     let venc = new Date(hoy.getFullYear(), hoy.getMonth(), dia);
     if (venc.getDate() < hoy.getDate()) venc = new Date(hoy.getFullYear(), hoy.getMonth() + 1, dia);
     const iso = `${venc.getFullYear()}-${pad2(venc.getMonth() + 1)}-${pad2(venc.getDate())}`;
+    const mes = iso.slice(0, 7);
     const faltan = diasEntre(hoyStr, iso);
     if (faltan > 6 || faltan < 0) continue;
 
-    const total = cero();
+    const cuotas = cero(), compras = cero();
     // Sólo lo que falta pagar: avisar por un resumen ya cobrado es ruido.
-    const items = (ctx.calCuotas.get(iso.slice(0, 7))?.items || [])
-      .filter((i) => i.tarjeta === tarjeta && !i.pagada);
-    for (const i of items) (i.moneda === 'USD' ? (total.usd += i.monto) : (total.ars += i.monto));
+    for (const i of (ctx.calCuotas.get(mes)?.items || [])) {
+      if (i.tarjeta !== tarjeta || i.pagada) continue;
+      (i.moneda === 'USD' ? (cuotas.usd += i.monto) : (cuotas.ars += i.monto));
+    }
+    for (const g of (ctx.gastosPorPeriodo?.get(mes) || [])) {
+      if (g.tarjeta !== tarjeta || g.reintegro) continue;
+      (g.moneda === 'USD' ? (compras.usd += g.monto) : (compras.ars += g.monto));
+    }
+    const total = masMontos(cuotas, compras);
     if (!eqv(total)) continue;
+
+    const plata = (v) => `<b>${fmtARS.format(v.ars)}</b>${v.usd ? ` + US$ ${v.usd.toFixed(2)}` : ''}`;
+    const desglose = eqv(cuotas) && eqv(compras)
+      ? ` Son ${plata(compras)} de compras del período y ${plata(cuotas)} de cuotas.`
+      : '';
 
     out.push({
       id: `venc:${tarjeta}:${iso}`,
@@ -405,7 +429,7 @@ function vencimientos(ctx) {
       titulo: faltan === 0
         ? `Hoy vence ${medioDe(tarjeta)?.label || tarjeta}`
         : `${medioDe(tarjeta)?.label || tarjeta} vence en ${faltan} día${faltan > 1 ? 's' : ''}`,
-      detalle: `El ${dia} tenés que pagar <b>${fmtARS.format(total.ars)}</b>${total.usd ? ` + US$ ${total.usd.toFixed(2)}` : ''} de cuotas.`,
+      detalle: `El ${dia} tenés que pagar ${plata(total)}.${desglose}`,
       accion: { tipo: 'ir', vista: 'cuotas', label: 'Ver cuotas' },
       peso: eqv(total),
     });
@@ -861,26 +885,47 @@ function dobleCobro(ctx) {
       if (!porServicio.has(hit.nombre)) porServicio.set(hit.nombre, new Map());
       const porTarj = porServicio.get(hit.nombre);
       const k = g.tarjeta || 'sin-medio';
-      if (!porTarj.has(k)) porTarj.set(k, []);
-      porTarj.get(k).push(g);
+      if (!porTarj.has(k)) porTarj.set(k, new Map());
+      const porMes = porTarj.get(k);
+      if (!porMes.has(mes)) porMes.set(mes, []);
+      porMes.get(mes).push(g);
     }
   }
 
   const out = [];
   for (const [nombre, porTarj] of porServicio) {
     if (porTarj.size < 2) continue;
+    // Dos tarjetas en meses DISTINTOS es una mudanza de medio de pago, no un
+    // doble cobro: pagaste una vez por mes, cambiando de plástico. Sólo hay
+    // doble cobro si en un mismo mes te lo cobraron las dos. (Claude pasó de
+    // Visa en julio a Mastercard en agosto y la alerta gritaba "pagás dos
+    // veces" sumando los dos meses.)
+    const mesesPorTarjeta = [...porTarj.values()].map((m) => new Set(m.keys()));
+    const solapan = ventana.some((mes) => mesesPorTarjeta.filter((s) => s.has(mes)).length >= 2);
+    if (!solapan) continue;
     const medios = [...porTarj.keys()];
-    const total = [...porTarj.values()].flat().reduce((a, g) => a + eq(g.monto, g.moneda), 0);
+    // Pesos y dólares por separado: sumarlos con `eq` cuando la cotización
+    // todavía no bajó da 0 y la alerta salía diciendo "por $ 0 en total".
+    const total = cero();
+    for (const porMes of porTarj.values()) {
+      for (const g of [...porMes.values()].flat()) {
+        (g.moneda === 'USD' ? (total.usd += g.monto) : (total.ars += g.monto));
+      }
+    }
+    // Piso: un doble cobro de US$ 0,46 no merece una alerta de nivel alto.
+    if (total.ars < 5000 && total.usd < 3) continue;
     const nombres = medios.map((k) => (ctx.medios || []).find((m) => m.key === k)?.nombre || medioDe(k)?.label || k);
+    const plata = `${total.ars ? fmtARS.format(total.ars) : ''}${
+      total.ars && total.usd ? ' + ' : ''}${total.usd ? `US$ ${total.usd.toFixed(2)}` : ''}`;
     out.push({
       id: `doble:${norm(nombre)}:${MES_HOY}`,
       tipo: 'doble-cobro',
       nivel: 'alta',
       icono: '⚠️',
       titulo: `${nombre} te lo cobran en ${porTarj.size} tarjetas`,
-      detalle: `Aparece en <b>${nombres.join(' y ')}</b> en los últimos dos meses, por ${fmtARS.format(total)} en total. Si cambiaste de medio de pago y no diste de baja el anterior, estás pagando dos veces la misma suscripción.`,
+      detalle: `Te lo cobraron en <b>${nombres.join(' y ')}</b> el MISMO mes, por ${plata} en total. Si cambiaste de medio de pago y no diste de baja el anterior, estás pagando dos veces la misma suscripción.`,
       accion: { tipo: 'ir', vista: 'gastos', label: 'Revisar' },
-      peso: total * 12,
+      peso: eqv(total) * 12,
     });
   }
   return out.slice(0, 2);
