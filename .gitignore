@@ -36,3 +36,7 @@ supabase/.branches/
 
 # Notas para retomar sesion: tienen refs de proyecto y prefijos de tokens
 RETOMAR-ACA.md
+
+# Salida de los parsers de resumen: son TUS consumos reales (comercio, fecha,
+# importe). El repo es publico. Los .js que los generan si se versionan.
+tools/resumenes/*.json
