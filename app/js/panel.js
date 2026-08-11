@@ -7,9 +7,11 @@
 // cuándo consumiste, cuotas = cuándo lo pagás) y sumarlas juntas duplica
 // (criterio acordado, ver TAREAS.md). Entonces:
 //   · CAJA    → lo que sale del bolsillo este mes: fijos + suscripciones +
-//               cuotas del mes + gastos que NO son de tarjeta de crédito.
+//               gastos que NO son de tarjeta + las cuotas que vencen + el
+//               resumen de la tarjeta (todo lo que compraste en un pago con
+//               crédito y te cobran ahora, sea de este mes o del anterior).
 //   · CONSUMO → lo que consumiste este mes: fijos + suscripciones + todos los
-//               gastos del mes, sin cuotas.
+//               gastos del mes, sin cuotas ni resumen.
 // Nunca se mezclan.
 //
 // Pesos y dólares tampoco se suman a ciegas: se acumulan por separado y el
@@ -125,11 +127,16 @@ const SERIES = [
   { key: 'fijos', label: 'Fijos', color: 'var(--fin-fijo)' },
   { key: 'subs', label: 'Suscripciones', color: 'var(--fin-sub)' },
   { key: 'cuotas', label: 'Cuotas', color: 'var(--fin-cuota)' },
+  { key: 'tarjetaPeriodo', label: 'Resumen tarjeta', color: 'var(--fin-tarjeta)' },
   { key: 'variable', label: 'Variable', color: 'var(--fin-var)' },
 ];
 
-/** Serie visible según la base: en CONSUMO las cuotas no participan del total. */
-const seriesVisibles = () => (base === 'caja' ? SERIES : SERIES.filter((s) => s.key !== 'cuotas'));
+/** Serie visible según la base. En CONSUMO no participan del total ni las
+ * cuotas (son compras de meses anteriores) ni el resumen de la tarjeta (esos
+ * consumos ya están contados en Fijos, Suscripciones y Variable, cada uno en
+ * el mes en que se compró). */
+const SOLO_CAJA = new Set(['cuotas', 'tarjetaPeriodo']);
+const seriesVisibles = () => (base === 'caja' ? SERIES : SERIES.filter((s) => !SOLO_CAJA.has(s.key)));
 
 function leyenda() {
   return `<div class="fin-leyenda">${seriesVisibles()
@@ -234,11 +241,12 @@ function renderHero(foto, previa) {
           veces la misma plata (una cuando compraste, otra cuando la pagás).
           En <b>Caja</b> sí entran, que es lo que realmente sale del bolsillo este mes.
         </div>` : ''}
-      ${base === 'caja' && equiv(foto.estructuralTarjeta) ? `
+      ${base === 'caja' && equiv(foto.tarjetaPeriodo) ? `
         <div class="fin-hero-aclara">
-          ${fmtARS.format(equiv(foto.estructuralTarjeta))} de tus fijos y suscripciones los cobra el resumen
-          de la tarjeta, así que están adentro de <b>Cuotas</b> y no en su propia línea.
-          En <b>Consumo</b> los ves separados.
+          <b>Resumen tarjeta</b> es todo lo que compraste en un pago con crédito y te cobran
+          este mes, fijos y suscripciones incluidos${equiv(foto.estructuralTarjeta)
+            ? ` (${fmtARS.format(equiv(foto.estructuralTarjeta))} son de ésos)` : ''}.
+          En <b>Consumo</b> los ves separados y en el mes en que los compraste.
         </div>` : ''}
     </div>`;
 }
@@ -435,7 +443,7 @@ function renderFilas(filas, ctx, { tipo }) {
           ${medio ? `<span>${medio.emoji} ${medio.label}</span>` : ''}
           ${r.moneda === 'USD' && aPesos(monto) ? `<span>≈ ${fmtARS.format(aPesos(monto))}</span>` : ''}
           ${porTarjeta && base === 'caja'
-            ? '<span class="fin-badge fin-badge--tarjeta" title="Lo cobra el resumen de la tarjeta: ya está contado dentro de Cuotas, por eso no se suma otra vez acá">💳 lo paga el resumen</span>'
+            ? '<span class="fin-badge fin-badge--tarjeta" title="Lo cobra el resumen de la tarjeta: ya está contado dentro de Resumen tarjeta, por eso no se suma otra vez acá">💳 lo paga el resumen</span>'
             : ''}
         </div>
         ${abierto ? `
@@ -614,6 +622,11 @@ function renderDeuda(ctx) {
         if (!sel || !sel.items?.length) return '';
         const items = sel.items.slice().sort((a, b) => b.monto - a.monto);
         const ingMes = equiv(ctx.foto.ingresos);
+        // Las barras son de CAJA (lo que cobra cada mes) pero el "Saldo total"
+        // de arriba es deuda (lo que falta pagar). Si el mes elegido ya tiene
+        // cuotas cobradas, la diferencia se dice en vez de dejarla implícita.
+        const yaPago = cero();
+        for (const it of sel.items) if (it.pagada) sumar(yaPago, it.monto, it.moneda);
         return `
           <div class="fin-deuda-mes">
             <div class="fin-deuda-mes-head">
@@ -621,11 +634,12 @@ function renderDeuda(ctx) {
               <span class="fin-deuda-mes-total">${plata(sel)}${
                 ingMes ? `<span class="fin-deuda-mes-pct">${pct(equiv(sel) / ingMes)} del ingreso</span>` : ''}</span>
             </div>
+            ${equiv(yaPago) ? `<div class="fin-deuda-mes-nota">De eso, <b>${plata(yaPago)}</b> ya salió de tu cuenta.</div>` : ''}
             ${items.map((i) => `
               <div class="fin-deuda-item">
                 <span class="fin-deuda-item-desc">${escapar(i.desc)}
                   <span class="fin-deuda-item-cuota">cuota ${i.n} de ${i.total}${
-                    i.n === i.total ? ' · última' : ''}</span></span>
+                    i.n === i.total ? ' · última' : ''}${i.pagada ? ' · ya pagada' : ''}</span></span>
                 <span class="fin-deuda-item-monto">${fmtMoneda(i.monto, i.moneda)}</span>
               </div>`).join('')}
           </div>`;

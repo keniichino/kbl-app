@@ -235,28 +235,30 @@ export function hitosDeAumento(r) {
 
 /**
  * `fecha_primer_venc` es el vencimiento de `cuota_actual` (la próxima a pagar),
- * así que el plan entero se reconstruye hacia atrás y hacia adelante. Las
- * cuotas anteriores a `cuota_actual` sirven para graficar la carga de deuda
- * que YA pagaste.
+ * así que el plan entero se reconstruye hacia atrás y hacia adelante.
  *
- * OJO — sólo se reconstruye hacia atrás para meses ya cerrados. Del mes
- * corriente en adelante se cuenta exactamente lo mismo que el módulo Cuotas
- * (de `cuota_actual` para arriba). Sin esa guarda, una cuota que vence el 1°
- * del mes que viene metía su cuota anterior en el mes actual y el Panel
- * mostraba $2.087.600 donde Cuotas mostraba $1.924.600: dos pantallas de la
- * misma app contradiciéndose, que es peor que un número redondeado de más.
+ * Esto es un calendario de CAJA: cada cuota va en el mes en que se cobró o se
+ * va a cobrar, esté paga o no. Las que ya pagaste llevan `pagada: true` para
+ * que `deudaPendiente()` no las cuente como deuda — son dos preguntas
+ * distintas ("cuánto salió en agosto" vs "cuánto debo").
+ *
+ * Una cuota ya paga nunca puede caer en un mes FUTURO: si pasa, la fecha del
+ * plan está mal cargada y contarla inventaría plata. En el mes corriente sí
+ * va: la pagaste hace unos días y salió de tu bolsillo igual. (Antes el corte
+ * era `>= MES_HOY` y por eso los $383.889 del resumen de Mercado Pago pagado
+ * el 10/08 no aparecían en ningún lado.)
  */
 export function calendarioCuotas(cuotas) {
   const porMes = new Map();
   for (const c of cuotas) {
-    if (c.estado !== 'activa') continue;
     for (let n = 1; n <= c.cuota_total; n++) {
       const mes = addMesesFecha(c.fecha_primer_venc, n - c.cuota_actual);
-      if (n < c.cuota_actual && mes >= MES_HOY) continue;   // ya pagada, no la cobran nunca más
+      const pagada = n < c.cuota_actual || c.estado !== 'activa';
+      if (pagada && mes > MES_HOY) continue;
       if (!porMes.has(mes)) porMes.set(mes, { ...cero(), items: [] });
       const acc = porMes.get(mes);
       sumar(acc, c.monto_cuota, c.moneda);
-      acc.items.push({ desc: c.descripcion, n, total: c.cuota_total, monto: c.monto_cuota, moneda: c.moneda, tarjeta: c.tarjeta });
+      acc.items.push({ desc: c.descripcion, n, total: c.cuota_total, monto: c.monto_cuota, moneda: c.moneda, tarjeta: c.tarjeta, pagada });
     }
   }
   return porMes;
@@ -327,19 +329,31 @@ export function periodoDeGasto(fechaIso, medio) {
 // ---------- Contexto y foto del mes ----------
 
 /** Índices y mapas que usan todos los cálculos. Se arma una vez por render.
+ *
+ * Son DOS índices porque las dos bases preguntan cosas distintas:
+ *   · `gastosPorMes`     → mes calendario. Cuándo consumiste. Base CONSUMO.
+ *   · `gastosPorPeriodo` → período de facturación. Cuándo lo cobra el resumen,
+ *                          o sea cuándo sale del bolsillo. Base CAJA.
+ * Sin día de cierre cargado en el medio los dos índices son idénticos, así que
+ * mientras "Bancos y tarjetas" esté vacío no cambia nada.
+ *
  * `medios`: lista de medios de pago (ver medios-credito.js) para resolver el
- * día de cierre de cada gasto con tarjeta; opcional, sin ella se comporta
- * como antes (mes calendario puro). */
+ * día de cierre de cada gasto con tarjeta; opcional. */
 export function contexto({ gastos, cuotas, recurrentes, ahorros, medios = [], inversiones = [] }) {
   const gastosPorMes = new Map();
+  const gastosPorPeriodo = new Map();
   for (const g of gastos) {
     const medio = medios.find((md) => md.key === g.tarjeta);
-    const m = periodoDeGasto(g.fecha, medio);
-    if (!gastosPorMes.has(m)) gastosPorMes.set(m, []);
-    gastosPorMes.get(m).push(g);
+    const cal = g.fecha.slice(0, 7);
+    if (!gastosPorMes.has(cal)) gastosPorMes.set(cal, []);
+    gastosPorMes.get(cal).push(g);
+    const per = periodoDeGasto(g.fecha, medio);
+    if (!gastosPorPeriodo.has(per)) gastosPorPeriodo.set(per, []);
+    gastosPorPeriodo.get(per).push(g);
   }
   return {
-    gastos, cuotas, recurrentes, ahorros, medios, inversiones, gastosPorMes,
+    gastos, cuotas, recurrentes, ahorros, medios, inversiones,
+    gastosPorMes, gastosPorPeriodo,
     match: matchear(gastos, recurrentes),
     calCuotas: calendarioCuotas(cuotas),
     credito: setDeCredito(medios),
@@ -404,6 +418,19 @@ export function fotoDelMes(mes, ctx, base = 'caja') {
     if (!credito.has(g.tarjeta)) sumar(varCaja, g.monto, g.moneda);
   }
 
+  // Los consumos en 1 pago con tarjeta viven SÓLO en `gastos` (los planes en
+  // cuotas viven en `cuotas` y su compra original no está acá). El resumen los
+  // cobra junto, así que en base CAJA salen del bolsillo el mes en que vence
+  // ese período. Sin esto la Visa desaparecía de Caja: no entra en `varCaja`
+  // (es crédito) ni en `cuotas` (no es un plan), y agosto/2026 daba ~$0 cuando
+  // en realidad se debitaban $1.897.243.
+  const tarjetaPeriodo = cero();
+  for (const g of (ctx.gastosPorPeriodo?.get(mes) || [])) {
+    if (!credito.has(g.tarjeta)) continue;   // el efectivo ya está en varCaja
+    if (g.reintegro) continue;               // lo pagaste por otro: mismo criterio que arriba
+    sumar(tarjetaPeriodo, g.monto, g.moneda);
+  }
+
   const cuotas = ctx.calCuotas.get(mes) || cero();
 
   for (const a of ctx.ahorros) {
@@ -419,7 +446,7 @@ export function fotoDelMes(mes, ctx, base = 'caja') {
   const estructuralTarjeta = masMontos(fijosTarjeta, subsTarjeta);
   const estructuralCaja = masMontos(fijosCaja, subsCaja);
 
-  const egresoCaja = masMontos(estructuralCaja, cuotas, varCaja);
+  const egresoCaja = masMontos(estructuralCaja, cuotas, varCaja, tarjetaPeriodo);
   const egresoConsumo = masMontos(estructuralTotal, varConsumo);
   const egreso = base === 'caja' ? egresoCaja : egresoConsumo;
   const variable = base === 'caja' ? varCaja : varConsumo;
@@ -433,17 +460,22 @@ export function fotoDelMes(mes, ctx, base = 'caja') {
     // Sin ajustar: el costo estructural real, que no depende de con qué pagues.
     fijosTotal, subsTotal, estructuralTotal,
     fijosTarjeta, subsTarjeta, estructuralTarjeta, fijosCaja, subsCaja, estructuralCaja,
-    varCaja, varConsumo, variable, egreso, egresoCaja, egresoConsumo,
+    varCaja, varConsumo, variable, tarjetaPeriodo, egreso, egresoCaja, egresoConsumo,
     aportes, retiros, ajenoPend, ajenoCobrado,
     disponible: { ars: ingresos.ars - egreso.ars, usd: ingresos.usd - egreso.usd },
     filasFijos, filasSubs, filasIngresos,
   };
 }
 
-/** Saldo de deuda: todas las cuotas que quedan por pagar desde `mes` inclusive. */
+/** Saldo de deuda: lo que queda POR pagar desde `mes` inclusive. Las cuotas
+ * del mes corriente que ya pagaste están en el calendario (son plata que
+ * salió) pero no son deuda, así que no cuentan acá. */
 export function deudaPendiente(mes, cal) {
   const acc = cero();
-  for (const [m, v] of cal) if (m >= mes) { acc.ars += v.ars; acc.usd += v.usd; }
+  for (const [m, v] of cal) {
+    if (m < mes) continue;
+    for (const it of v.items) if (!it.pagada) sumar(acc, it.monto, it.moneda);
+  }
   return acc;
 }
 
@@ -486,13 +518,15 @@ export function pendientesDeReintegro(gastos) {
  */
 export function indicadores(mes, ctx, foto, eq, { fotos = [] } = {}) {
   const ing = eq(foto.ingresos);
-  // Dos números distintos a propósito: `estructural` es el COSTO de tu
-  // estructura (no depende de con qué la pagues) y `estructuralCaja` es la
-  // parte que sale del bolsillo — el resto ya está adentro de `cuotas`.
+  // `estructural` es el COSTO de tu estructura, no depende de con qué la
+  // pagues. Va entero: la parte que va con tarjeta vive en `gastos`, no en
+  // `cuotas`, así que sumarla acá no duplica nada (antes se usaba
+  // `estructuralCaja` para evitar una duplicación que no existía, y el efecto
+  // era que las suscripciones con tarjeta no contaban en ningún lado).
   const estructural = eq(foto.estructuralTotal);
   const cuotasMes = eq(foto.cuotas);
   const variable = eq(foto.varConsumo);
-  const comprometido = eq(foto.estructuralCaja) + cuotasMes;
+  const comprometido = estructural + cuotasMes;
   const saldoDeuda = eq(deudaPendiente(mes, ctx.calCuotas));
 
   // Stock de ahorro acumulado hasta el mes que se está mirando.
@@ -508,10 +542,13 @@ export function indicadores(mes, ctx, foto, eq, { fotos = [] } = {}) {
   const varProm = fotos.length
     ? fotos.map((f) => eq(f.varConsumo)).reduce((a, b) => a + b, 0) / fotos.length
     : variable;
-  const costoMensual = eq(foto.estructuralCaja) + cuotasMes + varProm;
+  const costoMensual = estructural + cuotasMes + varProm;
 
-  // Cuándo dejás de arrastrar deuda.
-  const mesesConDeuda = [...ctx.calCuotas.keys()].filter((m) => m >= mes).sort();
+  // Cuándo dejás de arrastrar deuda. Sólo meses con cuotas SIN pagar: si no,
+  // el mes corriente ya cobrado corría la fecha de "libre en…" un mes de más.
+  const mesesConDeuda = [...ctx.calCuotas.entries()]
+    .filter(([m, v]) => m >= mes && v.items.some((it) => !it.pagada))
+    .map(([m]) => m).sort();
   const ultimoMes = mesesConDeuda.at(-1) || null;
 
   const semaforo = (v, bien, mal, invertido = false) => {
@@ -597,9 +634,10 @@ export function ritmoDisponible(foto, eq, hoy = new Date()) {
   const finMes = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0).getDate();
   const diaHoy = hoy.getDate();
   const restan = Math.max(1, finMes - diaHoy + 1);
-  // Lo comprometido se paga sí o sí; lo variable ya gastado, también. Va la
-  // estructura de CAJA para no contar dos veces lo que paga la tarjeta.
-  const libre = ing - eq(foto.estructuralCaja) - eq(foto.cuotas) - eq(foto.varCaja);
+  // Lo comprometido se paga sí o sí; lo variable ya gastado, también. Es
+  // exactamente el egreso de CAJA: incluye el resumen de la tarjeta que vence
+  // este mes, que es la salida más grande y la que no podés no pagar.
+  const libre = ing - eq(foto.egresoCaja);
   return {
     libre,
     restan,

@@ -1361,6 +1361,7 @@ body[data-theme="dark"] .btn-logout {
   --fin-fijo:   #3f6fb5;
   --fin-sub:    #7c5cc4;
   --fin-cuota:  #d0802f;
+  --fin-tarjeta:#b04a63;
   --fin-var:    #3f9b6d;
   --fin-ahorro: #12867c;
   --fin-ok:     #14784f;
@@ -1376,6 +1377,7 @@ body[data-theme="dark"] {
   --fin-fijo:   #60a5fa;
   --fin-sub:    #a78bfa;
   --fin-cuota:  #fbbf24;
+  --fin-tarjeta:#f472b6;
   --fin-var:    #34d399;
   --fin-ahorro: #2dd4bf;
   --fin-ok:     #34d399;
@@ -1795,6 +1797,10 @@ body[data-theme="dark"] .fin-edit-input { background: rgba(255,255,255,.1); colo
   font-size: .95rem; font-weight: 800; color: var(--ink); white-space: nowrap;
 }
 .fin-deuda-mes-pct { font-size: .66rem; font-weight: 700; color: var(--ink-soft); }
+.fin-deuda-mes-nota {
+  margin: -2px 0 6px; font-size: .72rem; color: var(--ink-soft); line-height: 1.35;
+}
+.fin-deuda-mes-nota b { color: var(--ink); font-weight: 800; }
 .fin-deuda-item {
   display: flex; align-items: baseline; justify-content: space-between;
   gap: 10px; padding: 4px 0;

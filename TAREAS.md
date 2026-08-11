@@ -151,6 +151,63 @@ Contraste medido en los dos temas: mínimo **4,63**.
 - [x] ~~**`bash blender/render_etapas.sh`**~~ — **hecho y verificado el 08/08.** Las 4 especies con sus 3 etapas jóvenes (36 frames cada una), revisadas frame por frame: bonsái con el tronco completo, roble y sakura sin cambios de calidad. `CON_ETAPAS` en `app/js/app.js` ya incluye `bonsai`, así que crece por geometría real y no por escala.
 - [x] ~~**`supabase/inversiones-setup.sql` en el proyecto PERSONAL (KBL APP)**~~ — **ya estaba corrido**, verificado contra la base el 09/08: la tabla `inversiones` existe, con RLS, su política y los cuatro campos de tesis (`tesis`, `precio_objetivo`, `fecha_objetivo`, `invalidacion`). Sincroniza. Está vacía porque no cargaste nada, no porque falte el script.
 
+## La tarjeta no existía en base Caja (2026-08-10)
+
+El bug más caro que tuvo la app y el más silencioso: **agosto/2026 mostraba ~$0
+de egreso en base Caja el mismo mes en que se debitaba el resumen entero de las
+dos tarjetas de Galicia.** (Los importes de este episodio están en
+`RETOMAR-ACA.md`, que no va al repo.)
+
+La causa era estructural. `egresoCaja` = `estructuralCaja + cuotas + gastos que
+no son de tarjeta`, y resulta que los 15 recurrentes menos el sueldo se pagan
+con Visa o Mastercard (→ `estructuralCaja` = $0) y los gastos de agosto eran
+todos de Visa (→ `varCaja` = $0). Los consumos en un pago con tarjeta no
+aparecían en ningún sumando: no son "cuota" y están excluidos del variable de
+caja para no duplicar. Simplemente desaparecían.
+
+- **`cuotas` dejó de duplicar a `gastos`.** Había 49 filas 1/1, una por consumo,
+  espejo de la de `gastos`. Se borraron: ahora `cuotas` son sólo planes de 2 o
+  más y `gastos` es la única fuente de los pagos únicos.
+- **`contexto()` arma dos índices** en vez de uno: `gastosPorMes` (mes
+  calendario → base CONSUMO) y `gastosPorPeriodo` (período de facturación →
+  base CAJA). Antes uno solo hacía de las dos cosas, así que cargar el día de
+  cierre habría roto la base Consumo.
+- **Serie nueva "Resumen tarjeta"** (`--fin-tarjeta`) en el hero, el desglose y
+  las barras apiladas. Sólo en base Caja.
+- `indicadores`, `ritmoDisponible` y las detecciones `techo` y `colchon`
+  arrastraban el mismo error al revés: usaban `estructuralCaja` "para no
+  duplicar con cuotas", pero esa duplicación nunca existió y el resultado era
+  que las suscripciones con tarjeta no contaban en ningún lado. Va
+  `estructuralTotal`.
+
+**Verificación (el patrón vale para cualquier cambio de este cálculo).** Que la
+app "se vea bien" no prueba nada; lo que prueba es cerrar contra el banco:
+`gastos del período + cuotas del mes` tiene que dar **exactamente** los consumos
+que declara el resumen, en pesos y en dólares — Mastercard cierra al centavo en
+las dos monedas. Y el pronóstico de cuotas tiene que coincidir mes a mes con la
+tabla "Cuotas a vencer" que imprime el propio PDF, que es una fuente
+independiente del cálculo. Más 12 casos de prueba sobre `fotoDelMes`,
+`calendarioCuotas` y `deudaPendiente`.
+
+**Segundo hueco, del mismo día: lo que ya pagaste este mes desaparecía del
+mes.** `calendarioCuotas()` salteaba los planes con `estado != 'activa'` (un
+plan terminado no aportaba a ningún mes, ni a los pasados) y cortaba las cuotas
+anteriores a `cuota_actual` con `mes >= MES_HOY`, o sea incluyendo el mes
+corriente. Entre las dos cosas, **el resumen entero de Mercado Pago que venció
+el 10/08 no aparecía en agosto por ningún lado**. Ahora el calendario
+es de caja (cada cuota en el mes que se cobró, con `pagada: true` en el item) y
+`deudaPendiente()` filtra por `!pagada` — "cuánto salió en agosto" y "cuánto
+debo" son dos preguntas y las resolvía el mismo número. Una cuota ya paga sí se
+sigue suprimiendo si cae en un mes futuro: eso es fecha mal cargada.
+
+**Lo que no cierra, y por qué.** `medios_pago.dia_cierre` es un `int`, pero
+Galicia cierra el 8/7, el 6/8 y el 10/9, los consumos del día del cierre caen en
+el resumen siguiente y el 08/07 hay dos compras, una en cada resumen. Con
+cierre 5 (el valor cargado) el mes corriente se lleva dos días de compras que
+pagó el resumen anterior: **+1,9% de error** medido contra el débito real. Con
+cierre 7 el error sería el doble. La solución de verdad es una tabla de cierres
+por mes en vez de un `int`.
+
 ## Limpieza de la base (2026-08-09)
 
 Hecha directo por MCP contra el proyecto personal (`jcsenhpuvvbxcxapoaia`),

@@ -391,7 +391,9 @@ function vencimientos(ctx) {
     if (faltan > 6 || faltan < 0) continue;
 
     const total = cero();
-    const items = (ctx.calCuotas.get(iso.slice(0, 7))?.items || []).filter((i) => i.tarjeta === tarjeta);
+    // Sólo lo que falta pagar: avisar por un resumen ya cobrado es ruido.
+    const items = (ctx.calCuotas.get(iso.slice(0, 7))?.items || [])
+      .filter((i) => i.tarjeta === tarjeta && !i.pagada);
     for (const i of items) (i.moneda === 'USD' ? (total.usd += i.monto) : (total.ars += i.monto));
     if (!eqv(total)) continue;
 
@@ -461,11 +463,11 @@ function faltantes(ctx) {
 function techo(foto, ctx) {
   const ing = eqv(foto.ingresos);
   if (!ing) return [];
-  // `estructuralCaja` y no `estructural`: lo que se paga con tarjeta ya viaja
-  // dentro de `cuotas`, y sumarlo otra vez daba el 101% famoso — declarar una
-  // suscripción que ya estaba en el resumen empujaba el porcentaje para arriba
-  // sin que hubiera salido un peso más de la cuenta.
-  const comp = eqv(masMontos(foto.estructuralCaja, foto.cuotas));
+  // Va la estructura ENTERA: lo que se paga con tarjeta vive en `gastos`, no
+  // en `cuotas`, así que no hay duplicación que evitar. (El 101% famoso venía
+  // de cuando cada consumo tenía además una cuota 1/1 espejo; esas cuotas ya
+  // no existen.)
+  const comp = eqv(masMontos(foto.estructuralTotal, foto.cuotas));
   const p = comp / ing;
   if (p < 0.7) return [];
   return [{
@@ -665,8 +667,9 @@ function colchon(ctx, foto) {
   if (!ing) return [];
   const stock = ctx.ahorros.reduce(
     (a, x) => a + eq(x.tipo === 'retiro' ? -x.monto : x.monto, x.moneda), 0);
-  // Lo que sale del bolsillo por mes: estructura de caja + resumen de tarjeta.
-  const costoMes = eqv(foto.estructuralCaja) + eqv(foto.cuotas);
+  // Lo que sale del bolsillo por mes sí o sí: la estructura entera (pagues con
+  // lo que pagues) más las cuotas que vencen.
+  const costoMes = eqv(foto.estructuralTotal) + eqv(foto.cuotas);
   if (!costoMes) return [];
   const meses = stock / costoMes;
   if (meses >= 3) return [];
