@@ -350,6 +350,9 @@ function initIslas() {
 
 // ---------- Sync: reaccionar a cambios del otro dispositivo ----------
 function onRemoteChange(kind) {
+  // El pull inicial trae las nueve tablas de una: repinta lo que esté abierto,
+  // sin importar qué módulo sea.
+  const todo = kind === 'pull';
   if (kind === 'active') {
     const active = getActive();
     if (active && !tickInterval) {
@@ -368,17 +371,17 @@ function onRemoteChange(kind) {
   if (document.querySelector('#view-bosque').classList.contains('active')) {
     renderBosque();
   }
-  if (kind === 'gastos' && document.querySelector('#view-gastos').classList.contains('active')) {
+  if ((kind === 'gastos' || todo) && document.querySelector('#view-gastos').classList.contains('active')) {
     renderGastos();
   }
-  if (kind === 'cuotas' && document.querySelector('#view-cuotas').classList.contains('active')) {
+  if ((kind === 'cuotas' || todo) && document.querySelector('#view-cuotas').classList.contains('active')) {
     renderCuotas();
   }
-  if (kind === 'notas' && document.querySelector('#view-notas').classList.contains('active')) {
+  if ((kind === 'notas' || todo) && document.querySelector('#view-notas').classList.contains('active')) {
     renderNotas();
   }
   // El panel se alimenta de casi todo: cualquier cambio lo desactualiza.
-  if (['gastos', 'cuotas', 'recurrentes', 'ahorros'].includes(kind) &&
+  if ((todo || ['gastos', 'cuotas', 'recurrentes', 'ahorros'].includes(kind)) &&
       document.querySelector('#view-panel').classList.contains('active')) {
     renderPanel();
   }

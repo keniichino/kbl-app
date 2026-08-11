@@ -186,6 +186,12 @@ export async function initSync(onRemoteChange) {
     // próxima corrida para no confundir un borrado remoto con un alta offline.
     // Se marca sólo si el pull salió bien: si hubo timeout no sabemos nada.
     localStorage.setItem(KEYS.lastPull, String(Date.now()));
+    // El pull inicial reescribe TODAS las tablas, pero la vista ya se pintó
+    // hace rato con lo que había en localStorage. Sin este aviso se queda con
+    // los datos viejos hasta que toques algo: pasó de verdad el 11/08, con el
+    // Panel mostrando cuotas de julio contra un server ya corregido. El
+    // realtime avisa por cada cambio suelto; el pull inicial no avisaba nada.
+    notify('pull');
   } catch (err) {
     // Offline o timeout es esperable y la app sigue andando con lo local; lo
     // logueamos igual para poder distinguirlo de un error real del servidor.
