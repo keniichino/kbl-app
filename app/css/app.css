@@ -1027,6 +1027,28 @@ body[data-theme="dark"] .resumen-ahorro { color: #6ee7b7; }
 .resumen-total-label { font-size: .78rem; font-weight: 800; color: var(--ink); text-transform: uppercase; letter-spacing: .06em; }
 .resumen-total-monto { font-size: 1rem; font-weight: 800; color: var(--accent-deep); font-variant-numeric: tabular-nums; }
 
+/* Resúmenes: 3 períodos reales (cuotas + compras) por tarjeta */
+.periodo-fila {
+  padding: 9px 0;
+  border-bottom: 1px solid rgba(0,0,0,.05);
+}
+.periodo-fila:last-child { border-bottom: none; }
+.periodo-fila-cab { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.periodo-fila-mes { font-size: .82rem; font-weight: 700; color: var(--ink); text-transform: capitalize; }
+.periodo-fila-monto { font-size: .88rem; font-weight: 800; color: var(--ink); font-variant-numeric: tabular-nums; }
+.periodo-fila-desglose { font-size: .7rem; color: var(--ink-soft); margin-top: 2px; line-height: 1.4; }
+.periodo-fila-pie {
+  display: flex; justify-content: space-between; align-items: center;
+  gap: 8px; margin-top: 6px; flex-wrap: wrap;
+}
+.periodo-fila-estado { font-size: .72rem; color: var(--ink-soft); font-weight: 600; }
+.periodo-fila-btns { display: flex; gap: 6px; }
+.periodo-fila-btns .fin-btn { flex: none; min-width: 0; padding: 6px 10px; }
+.periodo-fila--pagado .periodo-fila-estado { color: var(--fin-ok); font-weight: 700; }
+.periodo-fila--vencido .periodo-fila-mes,
+.periodo-fila--vencido .periodo-fila-estado { color: var(--fin-mal); }
+.periodo-fila--vencido .periodo-fila-estado { font-weight: 700; }
+
 /* Form agregar cuota */
 .cuota-form-wrap {
   margin: 10px 0 6px;
@@ -1233,6 +1255,7 @@ body[data-theme="dark"] .proy-barra { background: #3b82f6; }
 body[data-theme="dark"] .proy-barra-wrap { background: rgba(255,255,255,.07); }
 body[data-theme="dark"] .resumen-total { border-top-color: rgba(255,255,255,.1); }
 body[data-theme="dark"] .resumen-total-monto { color: #60a5fa; }
+body[data-theme="dark"] .periodo-fila { border-bottom-color: rgba(255,255,255,.07); }
 
 body[data-theme="dark"] .cuota-form-wrap {
   background: rgba(255,255,255,.04);

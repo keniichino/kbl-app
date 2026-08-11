@@ -265,6 +265,33 @@ export function calendarioCuotas(cuotas) {
 }
 
 /**
+ * Total real que se paga de una tarjeta en un período de facturación: cuotas
+ * que vencen ese mes + compras en un pago hechas en ese período (sin
+ * reintegros). Antes este cálculo sólo lo hacía la alerta de vencimiento, y
+ * sólo a 6 días del vencimiento — acá se puede pedir para cualquier tarjeta y
+ * cualquier período, pasado, presente o futuro (para eso están los dos
+ * índices de `contexto()`).
+ *
+ * `soloPendiente` saca las cuotas que ya se marcaron pagadas (para la alerta
+ * de vencimiento, que sólo quiere avisar por lo que falta). Los gastos no
+ * tienen ese concepto — se resuelve a nivel resumen con `pagos_resumen`, no acá.
+ */
+export function resumenPeriodo(tarjeta, periodo, ctx, { soloPendiente = false } = {}) {
+  const cuotas = cero();
+  const compras = cero();
+  for (const i of (ctx.calCuotas.get(periodo)?.items || [])) {
+    if (i.tarjeta !== tarjeta) continue;
+    if (soloPendiente && i.pagada) continue;
+    sumar(cuotas, i.monto, i.moneda);
+  }
+  for (const g of (ctx.gastosPorPeriodo?.get(periodo) || [])) {
+    if (g.tarjeta !== tarjeta || g.reintegro) continue;
+    sumar(compras, g.monto, g.moneda);
+  }
+  return { cuotas, compras, total: masMontos(cuotas, compras) };
+}
+
+/**
  * Vencimiento real de la cuota que toca este mes, por tarjeta. Sale del día
  * de vencimiento configurado en el medio; si no está cargado, del día que
  * traiga `fecha_primer_venc`. Devuelve Map tarjeta → { iso, dia, monto }.

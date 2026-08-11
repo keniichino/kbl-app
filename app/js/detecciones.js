@@ -13,7 +13,7 @@ import {
   fmtARS, fmtMoneda, fmtCorto, pct, variacion,
   montoEn, vigenteEn, masMontos, cero, deudaPendiente, TARJETAS_CREDITO, medioDe,
   cuotasVencidasSinPagar, ritmoDisponible, historialCompleto, pendientesDeReintegro,
-  hitosDeAumento,
+  hitosDeAumento, resumenPeriodo,
 } from './fincore.js';
 import { aPesos } from './cotizacion.js';
 import { clasificar, claseRecurrente, categoriaDe } from './catalogo.js';
@@ -403,17 +403,8 @@ function vencimientos(ctx) {
     const faltan = diasEntre(hoyStr, iso);
     if (faltan > 6 || faltan < 0) continue;
 
-    const cuotas = cero(), compras = cero();
     // Sólo lo que falta pagar: avisar por un resumen ya cobrado es ruido.
-    for (const i of (ctx.calCuotas.get(mes)?.items || [])) {
-      if (i.tarjeta !== tarjeta || i.pagada) continue;
-      (i.moneda === 'USD' ? (cuotas.usd += i.monto) : (cuotas.ars += i.monto));
-    }
-    for (const g of (ctx.gastosPorPeriodo?.get(mes) || [])) {
-      if (g.tarjeta !== tarjeta || g.reintegro) continue;
-      (g.moneda === 'USD' ? (compras.usd += g.monto) : (compras.ars += g.monto));
-    }
-    const total = masMontos(cuotas, compras);
+    const { cuotas, compras, total } = resumenPeriodo(tarjeta, mes, ctx, { soloPendiente: true });
     if (!eqv(total)) continue;
 
     const plata = (v) => `<b>${fmtARS.format(v.ars)}</b>${v.usd ? ` + US$ ${v.usd.toFixed(2)}` : ''}`;

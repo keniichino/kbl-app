@@ -16,6 +16,7 @@ const KEYS = {
   ahorros: 'kbl.ahorros',
   inversiones: 'kbl.inversiones',
   medios: 'kbl.medios_pago',
+  pagosResumen: 'kbl.pagos_resumen',
   uid: 'kbl.uid', // dueño de los datos locales actuales (para detectar cambio de cuenta)
   // Momento del último pull que trajo datos del server. Sirve para distinguir
   // "lo creé offline y falta subirlo" de "esto ya no está porque lo borraron
@@ -30,7 +31,7 @@ let currentUid = null; // user autenticado; el server igual valida vía RLS
 // en el mismo dispositivo, para no mezclar datos de dos usuarios).
 export function clearLocalData() {
   [KEYS.sessions, KEYS.active, KEYS.gastos, KEYS.notas, KEYS.cuotas,
-   KEYS.recurrentes, KEYS.ahorros, KEYS.inversiones, KEYS.medios, KEYS.lastPull].forEach(
+   KEYS.recurrentes, KEYS.ahorros, KEYS.inversiones, KEYS.medios, KEYS.pagosResumen, KEYS.lastPull].forEach(
     (k) => localStorage.removeItem(k)
   );
 }
@@ -155,9 +156,10 @@ export async function initSync(onRemoteChange) {
       supabase.from('ahorros').select('*'),
       supabase.from('medios_pago').select('*'),
       supabase.from('inversiones').select('*'),
+      supabase.from('pagos_resumen').select('*'),
     ]);
     const timeout = new Promise((_, rej) => setTimeout(rej, 3500, 'timeout'));
-    const [sess, act, gastosR, notasR, cuotasR, recuR, ahoR, medR, invR] = await Promise.race([pull, timeout]);
+    const [sess, act, gastosR, notasR, cuotasR, recuR, ahoR, medR, invR, pagR] = await Promise.race([pull, timeout]);
     if (sess.data) write(KEYS.sessions, sess.data.map(fromRemote));
     if (!act.error) {
       const local = getActive();
@@ -182,6 +184,12 @@ export async function initSync(onRemoteChange) {
     // romper el pull entero de las demás tablas.
     if (invR?.data) mergeListPull('inversiones', KEYS.inversiones, invR.data, fromRemoteInversion, toRemoteInversion);
     else if (invR?.error) console.warn('[sync] inversiones:', invR.error.message, '— ¿falta correr supabase/inversiones-setup.sql?');
+    // Pagos de resumen: se editan (ajustás el monto real contra el débito del
+    // banco), last-write-wins por `updated`. Mismo cuidado que inversiones: si
+    // falta correr el SQL, no rompe el pull de las demás tablas.
+    if (pagR?.data) mergeListPull('pagos_resumen', KEYS.pagosResumen, pagR.data, fromRemotePago, toRemotePago,
+      (local, remote) => local.updated > Date.parse(remote.updated_at));
+    else if (pagR?.error) console.warn('[sync] pagos_resumen:', pagR.error.message, '— ¿falta correr supabase/pagos-resumen-setup.sql?');
     // "Hasta acá estuvo sincronizado con el server." Lo lee mergeListPull en la
     // próxima corrida para no confundir un borrado remoto con un alta offline.
     // Se marca sólo si el pull salió bien: si hubo timeout no sabemos nada.
@@ -231,6 +239,7 @@ export async function initSync(onRemoteChange) {
   suscribirLista('ahorros', KEYS.ahorros, fromRemoteAhorro, 'ahorros');
   suscribirLista('medios_pago', KEYS.medios, fromRemoteMedio, 'medios_pago');
   suscribirLista('inversiones', KEYS.inversiones, fromRemoteInversion, 'inversiones');
+  suscribirLista('pagos_resumen', KEYS.pagosResumen, fromRemotePago, 'pagos_resumen');
 }
 
 // --- Gastos: [{ id, monto, descripcion, categoria, fecha, ts }] ---
@@ -648,6 +657,73 @@ export function upsertMedioPago(medio) {
 export function removeMedioPago(id) {
   write(KEYS.medios, getMediosPago().filter((m) => m.id !== id));
   push(supabase.from('medios_pago').delete().eq('id', id), 'medios_pago delete');
+}
+
+// --- Pagos de resumen: ledger real de "pagué la tarjeta X, período Y, tanto
+// plata, tal día" — [{ id, tarjeta, periodo, fechaPago, montoArs, montoUsd,
+// montoArsCalculado, montoUsdCalculado, cuotaIds, created_at, updated }] ---
+// Es ADITIVO a `cuotas.cuota_actual` (que sigue avanzando igual, para que "vas
+// por la cuota 3 de 6" no se rompa): esto guarda lo que salió de verdad de la
+// cuenta, con fecha y monto reales, y cubre también las compras en un pago
+// que `cuotas` nunca vio. Borrar una fila acá no toca ninguna cuota.
+// `cuotaIds` son las cuotas que este pago avanzó, para que deshacerlo sepa
+// exactamente cuáles retroceder.
+
+const toRemotePago = (p) => ({
+  id: p.id,
+  tarjeta: p.tarjeta,
+  periodo: p.periodo,
+  fecha_pago: p.fechaPago,
+  monto_ars: p.montoArs || 0,
+  monto_usd: p.montoUsd || 0,
+  monto_ars_calculado: p.montoArsCalculado ?? null,
+  monto_usd_calculado: p.montoUsdCalculado ?? null,
+  cuota_ids: p.cuotaIds || [],
+  created_at: p.created_at,
+  updated_at: new Date(p.updated || Date.now()).toISOString(),
+});
+const fromRemotePago = (r) => ({
+  id: r.id,
+  tarjeta: r.tarjeta,
+  periodo: r.periodo,
+  fechaPago: r.fecha_pago,
+  montoArs: Number(r.monto_ars) || 0,
+  montoUsd: Number(r.monto_usd) || 0,
+  montoArsCalculado: r.monto_ars_calculado != null ? Number(r.monto_ars_calculado) : null,
+  montoUsdCalculado: r.monto_usd_calculado != null ? Number(r.monto_usd_calculado) : null,
+  cuotaIds: Array.isArray(r.cuota_ids) ? r.cuota_ids : [],
+  created_at: r.created_at,
+  updated: Date.parse(r.updated_at),
+});
+
+export function getPagosResumen() {
+  return read(KEYS.pagosResumen, []);
+}
+
+/**
+ * Registra o edita el pago real de una tarjeta+período. Si ya había un pago
+ * para ese par, lo actualiza (reusa el id) en vez de duplicarlo — así se
+ * puede ajustar el monto real después de ver el débito del banco, y la tabla
+ * remota (única por tarjeta+período) nunca choca contra sí misma.
+ */
+export function upsertPagoResumen(pago) {
+  const previo = getPagosResumen().find((p) => p.tarjeta === pago.tarjeta && p.periodo === pago.periodo);
+  const item = {
+    ...previo, ...pago,
+    id: previo?.id || pago.id || crypto.randomUUID(),
+    created_at: previo?.created_at || new Date().toISOString(),
+    updated: Date.now(),
+  };
+  const all = getPagosResumen().filter((p) => p.id !== item.id);
+  all.push(item);
+  write(KEYS.pagosResumen, all);
+  push(supabase.from('pagos_resumen').upsert(toRemotePago(item), { onConflict: 'id' }), 'pagos_resumen upsert');
+  return item;
+}
+
+export function removePagoResumen(id) {
+  write(KEYS.pagosResumen, getPagosResumen().filter((p) => p.id !== id));
+  push(supabase.from('pagos_resumen').delete().eq('id', id), 'pagos_resumen delete');
 }
 
 // --- Estadísticas derivadas ---

@@ -1,9 +1,16 @@
 // ====== Módulo Cuotas ======
-import { getCuotas, addCuota, removeCuota, updateCuota } from './store.js';
-import { confirmar } from './dialog.js';
+import {
+  getCuotas, addCuota, removeCuota, updateCuota,
+  getGastos, getRecurrentes, getAhorros,
+  getPagosResumen, upsertPagoResumen, removePagoResumen,
+} from './store.js';
+import { confirmar, pedirTexto } from './dialog.js';
 import { equivalente, casaActual, siguienteCasa, onCotizacion, ahorroVsTarjeta, fmtARS0 } from './cotizacion.js';
 import { mediosCredito } from './medios-credito.js';
-import { cuotasVencidasSinPagar, hoyIso, diasEntre, pad2 } from './fincore.js';
+import {
+  cuotasVencidasSinPagar, hoyIso, diasEntre, pad2,
+  contexto, resumenPeriodo, periodoDeGasto, addMes,
+} from './fincore.js';
 import { generarIcs, descargarIcs, pedirConfigRecordatorio, labelFechaLarga } from './recordatorio.js';
 
 const fmtARS = new Intl.NumberFormat('es-AR', {
@@ -80,6 +87,31 @@ function vencimientoDe(c, medios) {
   return `${mes}-${pad2(Math.min(dia, ultimo))}`;
 }
 
+/** Igual que `vencimientoDe`, pero para un período sin cuota cargada todavía
+ * (compras en un pago, que no tienen su propia fila en `cuotas`). */
+function vencimientoDelPeriodo(periodo, medio) {
+  const dia = medio?.diaVencimiento ?? 10;
+  const [y, m] = periodo.split('-').map(Number);
+  const ultimo = new Date(y, m, 0).getDate();
+  return `${periodo}-${pad2(Math.min(dia, ultimo))}`;
+}
+
+/** true si el par {ars, usd} tiene algo de plata (evita ruido de $0,00). */
+const eqvLocal = (v) => (v.ars || 0) > 0.005 || (v.usd || 0) > 0.005;
+
+/** Contexto completo (gastos + cuotas + período de facturación) que necesita
+ * la sección de Resúmenes para calcular el total real de cada tarjeta. Se
+ * arma bajo demanda porque es liviano y así nunca queda desactualizado. */
+function ctxActual() {
+  return contexto({
+    gastos: getGastos(),
+    cuotas: getCuotas(),
+    recurrentes: getRecurrentes(),
+    ahorros: getAhorros(),
+    medios: mediosCredito(),
+  });
+}
+
 function proyectarMeses(cuotas, cuantos = 7) {
   const hoy = new Date();
   const hoyKey = mesKey(hoy.toISOString());
@@ -105,88 +137,110 @@ function proyectarMeses(cuotas, cuantos = 7) {
     .map(([key, v]) => ({ key, label: labelMes(key), ...v }));
 }
 
-function renderResumen(cuotas, primerMes) {
+/**
+ * Antes "Ya lo pagué" sólo tocaba `cuotas`: las compras en un pago no tenían
+ * estado, y el número mostrado nunca fue el real (cuotas + compras del
+ * período que cobra ese resumen). Esta sección muestra, por tarjeta, los 3
+ * períodos que importan — el que está por vencer, el que se está cerrando
+ * ahora (ahí cae "cuánto pago el mes que viene") y el siguiente — con el
+ * total de caja real y el pago efectivamente registrado en `pagos_resumen`,
+ * que es independiente de `cuotas.cuota_actual`: un click de más se deshace
+ * sin corromper ninguna cuota.
+ */
+function renderResumenes(cuotas) {
   const el = $('#cuotas-resumen');
-  if (!el || !primerMes) { if (el) el.innerHTML = ''; return; }
+  if (!el) return;
 
-  const porTarjeta = {};
-  const porTarjetaUsd = {};
-  for (const c of cuotas) {
-    if (c.estado !== 'activa') continue;
-    const restantes = c.cuota_total - c.cuota_actual + 1;
-    for (let i = 0; i < restantes; i++) {
-      const fecha = addMeses(c.fecha_primer_venc, i);
-      if (mesKey(fecha) !== primerMes.key) continue;
-      const acum = esUsd(c) ? porTarjetaUsd : porTarjeta;
-      acum[c.tarjeta] = (acum[c.tarjeta] || 0) + c.monto_cuota;
-    }
-  }
+  const ctx = ctxActual();
+  const pagos = getPagosResumen();
+  const medios = mediosCredito();
+  const usadas = new Set([
+    ...cuotas.map((c) => c.tarjeta),
+    ...ctx.gastos.map((g) => g.tarjeta),
+  ]);
+  const tarjetas = medios.filter((t) => ctx.credito.has(t.key) && usadas.has(t.key));
 
-  const total = Object.values(porTarjeta).reduce((a, b) => a + b, 0);
-  const totalUsd = Object.values(porTarjetaUsd).reduce((a, b) => a + b, 0);
-  const filas = mediosCredito()
-    .filter((t) => porTarjeta[t.key] || porTarjetaUsd[t.key])
-    .map((t) => `
-      <div class="resumen-fila">
-        <span class="resumen-fila-emoji">${t.emoji}</span>
-        <span class="resumen-fila-label">${t.nombre}</span>
-        <span class="resumen-fila-monto">${fmtARS.format(porTarjeta[t.key] || 0)}${
-          porTarjetaUsd[t.key] ? ` <span class="monto-usd">+ ${fmtUSD.format(porTarjetaUsd[t.key])}</span>` : ''
-        }</span>
-      </div>`).join('');
+  if (!tarjetas.length) { el.innerHTML = ''; return; }
 
-  // Los dólares del resumen los cubre comprando (MEP en Mercado Pago) y
-  // transfiriendo a Galicia. Mostramos cuánto le sale eso hoy, y cuánto más
-  // pagaría si dejara que el banco se los cobre al dólar tarjeta.
-  const comp = totalUsd ? ahorroVsTarjeta(totalUsd) : null;
-  const bloqueUsd = comp ? `
+  el.innerHTML = tarjetas.map((t) => {
+    // Período que hoy sigue sumando compras; el resumen más próximo a vencer
+    // es el anterior (ya cerró, todavía no lo pagaste). Sin día de cierre
+    // cargado no hay forma de saber cuál cerró, así que arranca en el actual.
+    const abierto = periodoDeGasto(hoyIso(), t);
+    const base = t.diaCierre != null ? addMes(abierto, -1) : abierto;
+    const periodos = [base, addMes(base, 1), addMes(base, 2)];
+
+    let comp = null; // ahorro de cubrir el USD del período más próximo, si tiene
+    const filas = periodos.map((p, i) => {
+      const { cuotas: cCuotas, compras, total } = resumenPeriodo(t.key, p, ctx);
+      if (i === 0 && total.usd) comp = ahorroVsTarjeta(total.usd);
+      const pago = pagos.find((x) => x.tarjeta === t.key && x.periodo === p);
+      const venc = vencimientoDelPeriodo(p, t);
+      const faltan = diasEntre(hoyIso(), venc);
+      const esAbierto = p === abierto;
+
+      let estado, claseFila = '';
+      if (pago) {
+        estado = `✓ Pagado el ${labelFechaLarga(pago.fechaPago)}`;
+        claseFila = 'periodo-fila--pagado';
+      } else if (esAbierto) {
+        estado = `período abierto${t.diaCierre ? ` · cierra el ${t.diaCierre}` : ''}`;
+      } else if (faltan < 0) {
+        estado = `venció hace ${-faltan} día${-faltan > 1 ? 's' : ''}`;
+        claseFila = 'periodo-fila--vencido';
+      } else if (faltan === 0) {
+        estado = 'vence hoy';
+      } else {
+        estado = `vence en ${faltan} día${faltan > 1 ? 's' : ''}`;
+      }
+
+      const desglose = eqvLocal(cCuotas) && eqvLocal(compras)
+        ? `${fmtARS.format(cCuotas.ars)}${cCuotas.usd ? ` +${fmtUSD.format(cCuotas.usd)}` : ''} de cuotas
+           · ${fmtARS.format(compras.ars)}${compras.usd ? ` +${fmtUSD.format(compras.usd)}` : ''} de compras del período`
+        : '';
+
+      const btns = pago
+        ? `<button class="fin-btn" data-editar-pago="${t.key}" data-mes="${p}">✏️ Ajustar</button>
+           <button class="fin-btn" data-deshacer-pago="${t.key}" data-mes="${p}">↩ Deshacer</button>`
+        : eqvLocal(total)
+          ? `<button class="fin-btn" data-recordar="${t.key}" data-venc="${venc}">🔔</button>
+             <button class="fin-btn fin-btn--ok" data-pagar-tarjeta="${t.key}" data-mes="${p}">Ya lo pagué</button>`
+          : '';
+
+      return `
+        <div class="periodo-fila ${claseFila}">
+          <div class="periodo-fila-cab">
+            <span class="periodo-fila-mes">${labelMes(p)}</span>
+            <span class="periodo-fila-monto">${fmtARS.format(total.ars)}${
+              total.usd ? ` <span class="monto-usd">+ ${fmtUSD.format(total.usd)}</span>` : ''
+            }</span>
+          </div>
+          ${desglose ? `<div class="periodo-fila-desglose">${desglose}</div>` : ''}
+          <div class="periodo-fila-pie">
+            <span class="periodo-fila-estado">${estado}</span>
+            <div class="periodo-fila-btns">${btns}</div>
+          </div>
+        </div>`;
+    }).join('');
+
+    // Los dólares del resumen más próximo se cubren comprando (MEP en Mercado
+    // Pago) y transfiriendo a Galicia. Mostrar cuánto sale eso hoy, y cuánto
+    // más pagaría si los deja pasar al dólar tarjeta.
+    const bloqueUsd = comp ? `
       <div class="resumen-usd-nota">
-        Cubrir los ${fmtUSD.format(totalUsd)} te sale <b>${fmtARS0(comp.propio)}</b>
+        Cubrir los dólares del próximo resumen te sale <b>${fmtARS0(comp.propio)}</b>
         comprando ${casaActual().label}.
         <br>Si los pagás en pesos con la tarjeta: ${fmtARS0(comp.conTarjeta)}
         → <b class="resumen-ahorro">ahorrás ${fmtARS0(comp.ahorro)}</b>.
       </div>` : '';
 
-  // Un botón de pago por tarjeta: pagás el resumen entero, no cuota por cuota.
-  // Avanza de una todas las cuotas de esa tarjeta que vencen este mes.
-  const medios = mediosCredito();
-  const accionesPorTarjeta = mediosCredito()
-    .filter((t) => porTarjeta[t.key] || porTarjetaUsd[t.key])
-    .map((t) => {
-      const delMes = cuotas.filter((c) => c.estado === 'activa' && c.tarjeta === t.key
-        && c.fecha_primer_venc.slice(0, 7) === primerMes.key);
-      if (!delMes.length) return '';
-      const venc = vencimientoDe(delMes[0], medios);
-      const faltan = diasEntre(hoyIso(), venc);
-      const cuando = faltan === 0 ? 'vence hoy'
-        : faltan > 0 ? `vence en ${faltan} día${faltan > 1 ? 's' : ''}`
-        : `venció hace ${-faltan} día${-faltan > 1 ? 's' : ''}`;
-      return `
-        <div class="resumen-accion ${faltan < 0 ? 'resumen-accion--vencida' : ''}">
-          <div class="resumen-accion-info">
-            <b>${t.emoji} ${escapar(t.nombre)}</b>
-            <span>${labelFechaLarga(venc)} · ${cuando}</span>
-          </div>
-          <div class="resumen-accion-btns">
-            <button class="fin-btn" data-recordar="${t.key}" data-venc="${venc}">🔔 Recordarme</button>
-            <button class="fin-btn fin-btn--ok" data-pagar-tarjeta="${t.key}" data-mes="${primerMes.key}">Ya lo pagué</button>
-          </div>
-        </div>`;
-    }).join('');
-
-  el.innerHTML = `
-    <div class="cuotas-resumen-wrap">
-      <div class="cuotas-proy-title">Próximo resumen · ${primerMes.label}</div>
-      ${filas}
-      <div class="resumen-total">
-        <span class="resumen-total-label">Total</span>
-        <span class="resumen-total-monto">${fmtARS.format(total)}${
-          totalUsd ? ` <span class="monto-usd">+ ${fmtUSD.format(totalUsd)}</span>` : ''
-        }</span>
-      </div>
-      ${bloqueUsd}
-      ${accionesPorTarjeta}
-    </div>`;
+    return `
+      <div class="cuotas-resumen-wrap">
+        <div class="cuotas-proy-title">${t.emoji} ${escapar(t.nombre)}</div>
+        ${filas}
+        ${bloqueUsd}
+      </div>`;
+  }).join('');
 }
 
 /** Aviso arriba de todo cuando hay cuotas cuyo vencimiento ya pasó sin marcar. */
@@ -224,6 +278,88 @@ function renderVencidas(cuotas) {
   }).join('');
 }
 
+/**
+ * Registra (o edita) el pago real de una tarjeta+período: fecha de hoy y
+ * monto, arrancando del total calculado pero editable — el débito real del
+ * banco puede diferir por impuestos, redondeos o devoluciones que la app no
+ * modela. Es aditivo: no toca `cuotas` en una edición, y en el primer pago
+ * avanza las cuotas de ese período igual que siempre (guarda sus ids para
+ * que "Deshacer" sepa exactamente cuáles retroceder).
+ */
+async function marcarPago(tarjeta, periodo, { esEdicion }) {
+  const ctx = ctxActual();
+  const medio = mediosCredito().find((m) => m.key === tarjeta);
+  const { total } = resumenPeriodo(tarjeta, periodo, ctx);
+  const pagoPrevio = getPagosResumen().find((p) => p.tarjeta === tarjeta && p.periodo === periodo);
+  const calcArs = Math.round(total.ars);
+  const valorInicial = pagoPrevio ? Math.round(pagoPrevio.montoArs) : calcArs;
+
+  const faltan = diasEntre(hoyIso(), vencimientoDelPeriodo(periodo, medio));
+  const avisoVenc = !esEdicion && faltan > 0
+    ? ` Ojo: todavía no venció, le faltan ${faltan} día${faltan > 1 ? 's' : ''}.`
+    : '';
+
+  const txtArs = await pedirTexto({
+    titulo: `¿Cuánto pagaste de ${medio?.nombre || tarjeta} — ${labelMes(periodo)}?`,
+    mensaje: `Calculado: ${fmtARS.format(calcArs)}${total.usd ? ` + ${fmtUSD.format(total.usd)}` : ''}.${
+      esEdicion ? ' Corregilo si el banco te cobró otra cosa.' : ''}${avisoVenc}`,
+    valor: String(valorInicial),
+    placeholder: 'Monto en pesos',
+    accion: esEdicion ? 'Guardar' : 'Sí, lo pagué',
+  });
+  if (txtArs === null) return;
+  const montoArs = Number(txtArs.replace(/[^\d]/g, '')) || calcArs;
+
+  let montoUsd = pagoPrevio?.montoUsd ?? total.usd;
+  if (total.usd > 0.005 || montoUsd > 0.005) {
+    const txtUsd = await pedirTexto({
+      titulo: '¿Y en dólares?',
+      mensaje: `Calculado: ${fmtUSD.format(total.usd)}.`,
+      valor: montoUsd.toFixed(2),
+      placeholder: 'Monto en USD',
+      accion: 'Guardar',
+    });
+    if (txtUsd !== null) montoUsd = Number(txtUsd.replace(',', '.')) || 0;
+  }
+
+  const cuotasDelPeriodo = getCuotas().filter((c) => c.estado === 'activa'
+    && c.tarjeta === tarjeta && c.fecha_primer_venc.slice(0, 7) === periodo);
+
+  upsertPagoResumen({
+    tarjeta, periodo,
+    fechaPago: hoyIso(),
+    montoArs, montoUsd,
+    montoArsCalculado: calcArs,
+    montoUsdCalculado: total.usd,
+    cuotaIds: pagoPrevio?.cuotaIds || cuotasDelPeriodo.map((c) => c.id),
+  });
+
+  if (!esEdicion) cuotasDelPeriodo.forEach(avanzarCuota);
+  render();
+}
+
+/** Deshace un pago de resumen: borra el registro y retrocede sólo las cuotas
+ * que ese pago había avanzado (guardadas en `cuotaIds`). No toca `gastos`. */
+async function deshacerPago(tarjeta, periodo) {
+  const pago = getPagosResumen().find((p) => p.tarjeta === tarjeta && p.periodo === periodo);
+  if (!pago) return;
+  const medio = mediosCredito().find((m) => m.key === tarjeta);
+  const ok = await confirmar({
+    titulo: `¿Deshacer el pago de ${medio?.nombre || tarjeta}?`,
+    mensaje: `${labelMes(periodo)} vuelve a contar como pendiente.`,
+    accion: 'Deshacer',
+    destructivo: true,
+  });
+  if (!ok) return;
+  removePagoResumen(pago.id);
+  const cuotas = getCuotas();
+  (pago.cuotaIds || []).forEach((id) => {
+    const c = cuotas.find((x) => x.id === id);
+    if (c) retrocederCuota(c);
+  });
+  render();
+}
+
 function render() {
   const cuotas = getCuotas();
   const activas = cuotas.filter((c) => c.estado === 'activa');
@@ -245,7 +381,7 @@ function render() {
   $('#cuotas-activas-count').textContent = `${activas.length} cuota${activas.length !== 1 ? 's' : ''} activa${activas.length !== 1 ? 's' : ''}`;
 
   renderVencidas(cuotas);
-  renderResumen(cuotas, proyeccion[0]);
+  renderResumenes(cuotas);
 
   // Proyección mensual
   const proyHtml = proyeccion.length
@@ -421,32 +557,24 @@ export function initCuotas() {
     }
   });
 
-  // Pagar un resumen entero y generar recordatorios (viven en dos contenedores
-  // distintos, así que la delegación va en la vista completa).
+  // Pagar/ajustar/deshacer un resumen y generar recordatorios (viven en dos
+  // contenedores distintos, así que la delegación va en la vista completa).
   $('#view-cuotas').addEventListener('click', async (e) => {
     const btnPagarT = e.target.closest('[data-pagar-tarjeta]');
     if (btnPagarT) {
-      const { pagarTarjeta, mes } = btnPagarT.dataset;
-      const delMes = getCuotas().filter((c) => c.estado === 'activa'
-        && c.tarjeta === pagarTarjeta && c.fecha_primer_venc.slice(0, 7) === mes);
-      if (!delMes.length) return;
-      const totalArs = delMes.filter((c) => c.moneda !== 'USD').reduce((a, c) => a + c.monto_cuota, 0);
-      const medio = mediosCredito().find((m) => m.key === pagarTarjeta);
-      // El resumen del mes que viene también tiene su botón, así que se puede
-      // marcar como pagado algo que todavía no venció y adelantar las cuotas un
-      // mes de más sin querer. Se deja hacer (podés pagar antes), pero avisando.
-      const faltan = diasEntre(hoyIso(), vencimientoDe(delMes[0], mediosCredito()));
-      const aviso = faltan > 0
-        ? ` Ojo: todavía no venció, le faltan ${faltan} día${faltan > 1 ? 's' : ''}.`
-        : '';
-      const ok = await confirmar({
-        titulo: `¿Pagaste el resumen de ${medio?.nombre || pagarTarjeta}?`,
-        mensaje: (delMes.length === 1
-          ? `Se marca 1 cuota por ${fmtARS.format(totalArs)}. Avanza un mes y el saldo baja.`
-          : `Se marcan ${delMes.length} cuotas por ${fmtARS.format(totalArs)}. Todas avanzan un mes y el saldo baja.`) + aviso,
-        accion: 'Sí, lo pagué',
-      });
-      if (ok) { delMes.forEach(avanzarCuota); render(); }
+      await marcarPago(btnPagarT.dataset.pagarTarjeta, btnPagarT.dataset.mes, { esEdicion: false });
+      return;
+    }
+
+    const btnEditar = e.target.closest('[data-editar-pago]');
+    if (btnEditar) {
+      await marcarPago(btnEditar.dataset.editarPago, btnEditar.dataset.mes, { esEdicion: true });
+      return;
+    }
+
+    const btnDeshacerP = e.target.closest('[data-deshacer-pago]');
+    if (btnDeshacerP) {
+      await deshacerPago(btnDeshacerP.dataset.deshacerPago, btnDeshacerP.dataset.mes);
       return;
     }
 
@@ -455,10 +583,10 @@ export function initCuotas() {
       const { recordar, venc } = btnRec.dataset;
       const medio = mediosCredito().find((m) => m.key === recordar);
       const nombre = medio?.nombre || recordar;
+      const periodo = venc.slice(0, 7);
+      const { cuotas: cCuotas, compras, total } = resumenPeriodo(recordar, periodo, ctxActual());
       const delMes = getCuotas().filter((c) => c.estado === 'activa'
-        && c.tarjeta === recordar && c.fecha_primer_venc.slice(0, 7) === venc.slice(0, 7));
-      const totalArs = delMes.filter((c) => c.moneda !== 'USD').reduce((a, c) => a + c.monto_cuota, 0);
-      const totalUsd = delMes.filter((c) => c.moneda === 'USD').reduce((a, c) => a + c.monto_cuota, 0);
+        && c.tarjeta === recordar && c.fecha_primer_venc.slice(0, 7) === periodo);
 
       const cfg = await pedirConfigRecordatorio({
         titulo: `Vence el resumen de ${nombre}`,
@@ -467,8 +595,11 @@ export function initCuotas() {
       if (!cfg) return;
 
       const detalle = [
-        `Total a pagar: ${fmtARS.format(totalArs)}${totalUsd ? ` + ${fmtUSD.format(totalUsd)}` : ''}`,
-        `${delMes.length} cuota${delMes.length > 1 ? 's' : ''} en el resumen.`,
+        `Total a pagar: ${fmtARS.format(total.ars)}${total.usd ? ` + ${fmtUSD.format(total.usd)}` : ''}`,
+        eqvLocal(cCuotas) && eqvLocal(compras)
+          ? `De eso, ${fmtARS.format(compras.ars)} son compras del período y ${fmtARS.format(cCuotas.ars)} cuotas.`
+          : '',
+        delMes.length ? `${delMes.length} cuota${delMes.length > 1 ? 's' : ''} en el resumen.` : '',
         '',
         ...delMes.slice(0, 12).map((c) => `· ${c.descripcion} — ${fmt(c.monto_cuota, c.moneda)} (${c.cuota_actual}/${c.cuota_total})`),
         delMes.length > 12 ? `…y ${delMes.length - 12} más.` : '',
@@ -477,7 +608,7 @@ export function initCuotas() {
       ].filter(Boolean).join('\n');
 
       descargarIcs(`vence-${nombre}`, generarIcs({
-        titulo: `💳 Vence ${nombre} — ${fmtARS.format(totalArs)}`,
+        titulo: `💳 Vence ${nombre} — ${fmtARS.format(total.ars)}`,
         descripcion: detalle,
         fecha: venc,
         hora: cfg.hora,
