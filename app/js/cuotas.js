@@ -9,7 +9,7 @@ import { equivalente, casaActual, siguienteCasa, onCotizacion, ahorroVsTarjeta, 
 import { mediosCredito } from './medios-credito.js';
 import {
   cuotasVencidasSinPagar, hoyIso, diasEntre, pad2,
-  contexto, resumenPeriodo, periodoDeGasto, addMes,
+  contexto, resumenPeriodo, periodoDeGasto, addMes, cero, sumar,
 } from './fincore.js';
 import { generarIcs, descargarIcs, pedirConfigRecordatorio, labelFechaLarga } from './recordatorio.js';
 
@@ -21,7 +21,6 @@ const fmtARS = new Intl.NumberFormat('es-AR', {
 const fmtUSD = new Intl.NumberFormat('es-AR', {
   style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 2,
 });
-const esUsd = (c) => c.moneda === 'USD';
 const fmt = (monto, moneda) => (moneda === 'USD' ? fmtUSD : fmtARS).format(monto);
 
 let tarjetaSel = 'visa';
@@ -36,10 +35,6 @@ function addMeses(fecha, n) {
   const d = new Date(fecha + 'T00:00:00');
   d.setMonth(d.getMonth() + n);
   return d.toISOString().slice(0, 10);
-}
-
-function mesKey(fechaIso) {
-  return fechaIso.slice(0, 7); // "2026-08"
 }
 
 function labelMes(yyyy_mm) {
@@ -112,29 +107,27 @@ function ctxActual() {
   });
 }
 
-function proyectarMeses(cuotas, cuantos = 7) {
-  const hoy = new Date();
-  const hoyKey = mesKey(hoy.toISOString());
-  const meses = {};
+/** Período más próximo a vencer de un medio: el anterior al que hoy sigue
+ * sumando compras. Sin día de cierre cargado no hay forma de saber cuál
+ * cerró, así que arranca en el actual. Misma cuenta que usa Resúmenes. */
+function periodoBaseDe(medio) {
+  const abierto = periodoDeGasto(hoyIso(), medio);
+  return medio?.diaCierre != null ? addMes(abierto, -1) : abierto;
+}
 
-  for (const c of cuotas) {
-    if (c.estado !== 'activa') continue;
-    const restantes = c.cuota_total - c.cuota_actual + 1;
-    for (let i = 0; i < restantes; i++) {
-      const fecha = addMeses(c.fecha_primer_venc, i);
-      const key = mesKey(fecha);
-      if (key < hoyKey) continue;
-      if (!meses[key]) meses[key] = { total: 0, totalUsd: 0, items: [] };
-      if (esUsd(c)) meses[key].totalUsd += c.monto_cuota;
-      else meses[key].total += c.monto_cuota;
-      meses[key].items.push({ desc: c.descripcion, tarjeta: c.tarjeta, monto: c.monto_cuota, moneda: c.moneda, cuotaNum: c.cuota_actual + i, cuotaTotal: c.cuota_total });
-    }
+/** Total real (cuotas + compras, de todas las tarjetas de crédito) de un
+ * período — lo que de verdad sale de la cuenta ese mes, pagado o no. Es la
+ * misma cuenta que arma cada fila de Resúmenes, sumada entre tarjetas: así
+ * el total de arriba de la vista nunca puede decir un número distinto al de
+ * las tarjetas de abajo. */
+function totalRealDelPeriodo(periodo, medios, ctx) {
+  const t = cero();
+  for (const m of medios) {
+    const { total } = resumenPeriodo(m.key, periodo, ctx);
+    if (total.ars) sumar(t, total.ars, 'ARS');
+    if (total.usd) sumar(t, total.usd, 'USD');
   }
-
-  return Object.entries(meses)
-    .sort(([a], [b]) => a.localeCompare(b))
-    .slice(0, cuantos)
-    .map(([key, v]) => ({ key, label: labelMes(key), ...v }));
+  return t;
 }
 
 /**
@@ -147,11 +140,10 @@ function proyectarMeses(cuotas, cuantos = 7) {
  * que es independiente de `cuotas.cuota_actual`: un click de más se deshace
  * sin corromper ninguna cuota.
  */
-function renderResumenes(cuotas) {
+function renderResumenes(cuotas, ctx) {
   const el = $('#cuotas-resumen');
   if (!el) return;
 
-  const ctx = ctxActual();
   const pagos = getPagosResumen();
   const medios = mediosCredito();
   const usadas = new Set([
@@ -163,11 +155,8 @@ function renderResumenes(cuotas) {
   if (!tarjetas.length) { el.innerHTML = ''; return; }
 
   el.innerHTML = tarjetas.map((t) => {
-    // Período que hoy sigue sumando compras; el resumen más próximo a vencer
-    // es el anterior (ya cerró, todavía no lo pagaste). Sin día de cierre
-    // cargado no hay forma de saber cuál cerró, así que arranca en el actual.
     const abierto = periodoDeGasto(hoyIso(), t);
-    const base = t.diaCierre != null ? addMes(abierto, -1) : abierto;
+    const base = periodoBaseDe(t);
     const periodos = [base, addMes(base, 1), addMes(base, 2)];
 
     let comp = null; // ahorro de cubrir el USD del período más próximo, si tiene
@@ -178,11 +167,22 @@ function renderResumenes(cuotas) {
       const venc = vencimientoDelPeriodo(p, t);
       const faltan = diasEntre(hoyIso(), venc);
       const esAbierto = p === abierto;
+      // `total` es el costo real del período (pagado o no). Pero antes de que
+      // existiera este ledger, "pagar" era avanzar `cuota_actual` sin dejar
+      // rastro: un período viejo puede estar 100% resuelto por ese mecanismo
+      // y no tener fila acá en `pagos`. `soloPendiente` filtra esas cuotas ya
+      // marcadas, así no sale "venció hace 3 días" de un Mercado Pago que
+      // Keni ya pagó hace rato — es lo que faltaba de verdad lo que decide si
+      // hay algo para mostrar como acción.
+      const pendiente = resumenPeriodo(t.key, p, ctx, { soloPendiente: true }).total;
+      const accionable = eqvLocal(pendiente);
 
       let estado, claseFila = '';
       if (pago) {
         estado = `✓ Pagado el ${labelFechaLarga(pago.fechaPago)}`;
         claseFila = 'periodo-fila--pagado';
+      } else if (!accionable) {
+        estado = eqvLocal(total) ? 'sin saldo pendiente' : 'sin movimientos';
       } else if (esAbierto) {
         estado = `período abierto${t.diaCierre ? ` · cierra el ${t.diaCierre}` : ''}`;
       } else if (faltan < 0) {
@@ -202,7 +202,7 @@ function renderResumenes(cuotas) {
       const btns = pago
         ? `<button class="fin-btn" data-editar-pago="${t.key}" data-mes="${p}">✏️ Ajustar</button>
            <button class="fin-btn" data-deshacer-pago="${t.key}" data-mes="${p}">↩ Deshacer</button>`
-        : eqvLocal(total)
+        : accionable
           ? `<button class="fin-btn" data-recordar="${t.key}" data-venc="${venc}">🔔</button>
              <button class="fin-btn fin-btn--ok" data-pagar-tarjeta="${t.key}" data-mes="${p}">Ya lo pagué</button>`
           : '';
@@ -363,17 +363,27 @@ async function deshacerPago(tarjeta, periodo) {
 function render() {
   const cuotas = getCuotas();
   const activas = cuotas.filter((c) => c.estado === 'activa');
-  const proyeccion = proyectarMeses(cuotas);
+  const ctx = ctxActual();
+  const tarjetas = mediosCredito().filter((t) => ctx.credito.has(t.key));
 
-  // Hero: total del mes más próximo con cuotas
-  const primerMes = proyeccion[0];
-  $('#cuotas-total').textContent = primerMes ? fmtARS.format(primerMes.total) : '$ 0';
+  // El total de acá arriba y el de cada tarjeta en "Resúmenes" tienen que
+  // decir SIEMPRE el mismo número para el mismo mes — antes esto sumaba sólo
+  // cuotas ("$326.542") mientras Resúmenes ya mostraba cuotas + compras
+  // ("$1.332.729" la sola Visa de agosto), dos totales de "agosto" en la
+  // misma pantalla que no coincidían entre sí.
+  const bases = tarjetas.map(periodoBaseDe).sort();
+  const periodos = bases.length ? Array.from({ length: 7 }, (_, i) => addMes(bases[0], i)) : [];
+  const totales = periodos.map((key) => ({ key, label: labelMes(key), ...totalRealDelPeriodo(key, tarjetas, ctx) }));
+
+  // Hero: total real del mes más próximo con algo por vencer
+  const primerMes = totales[0];
+  $('#cuotas-total').textContent = primerMes ? fmtARS.format(primerMes.ars) : '$ 0';
   const heroUsd = $('#cuotas-total-usd');
   if (heroUsd) {
-    heroUsd.hidden = !primerMes?.totalUsd;
-    const eq = primerMes?.totalUsd ? equivalente(primerMes.totalUsd) : '';
-    heroUsd.innerHTML = primerMes?.totalUsd
-      ? '+ ' + fmtUSD.format(primerMes.totalUsd)
+    heroUsd.hidden = !primerMes?.usd;
+    const eq = primerMes?.usd ? equivalente(primerMes.usd) : '';
+    heroUsd.innerHTML = primerMes?.usd
+      ? '+ ' + fmtUSD.format(primerMes.usd)
         + (eq ? ` <span class="cotiz-eq" role="button" tabindex="0" title="Tocá para cambiar de cotización">${eq} <span class="cotiz-casa">${casaActual().label}</span></span>` : '')
       : '';
   }
@@ -381,19 +391,19 @@ function render() {
   $('#cuotas-activas-count').textContent = `${activas.length} cuota${activas.length !== 1 ? 's' : ''} activa${activas.length !== 1 ? 's' : ''}`;
 
   renderVencidas(cuotas);
-  renderResumenes(cuotas);
+  renderResumenes(cuotas, ctx);
 
-  // Proyección mensual
-  const proyHtml = proyeccion.length
-    ? proyeccion.map((m, i) => `
+  // Proyección mensual: mismo total real, 7 meses para adelante
+  const proyHtml = totales.length
+    ? totales.map((m, i) => `
         <div class="proy-row ${i === 0 ? 'proy-row--next' : ''}">
           <div class="proy-mes">${m.label}</div>
           <div class="proy-barra-wrap">
-            <div class="proy-barra" style="width:${Math.min(100, (m.total / (proyeccion[0]?.total || 1)) * 100)}%"></div>
+            <div class="proy-barra" style="width:${Math.min(100, (m.ars / (totales[0]?.ars || 1)) * 100)}%"></div>
           </div>
-          <div class="proy-monto">${fmtARS.format(m.total)}</div>
+          <div class="proy-monto">${fmtARS.format(m.ars)}${m.usd ? ` <span class="monto-usd">+${fmtUSD.format(m.usd)}</span>` : ''}</div>
         </div>`).join('')
-    : '<p class="cuotas-empty-sub">Sin cuotas en los próximos meses.</p>';
+    : '<p class="cuotas-empty-sub">Sin tarjetas activas.</p>';
   $('#cuotas-proyeccion').innerHTML = proyHtml;
 
   // Lista de cuotas activas
