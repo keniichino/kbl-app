@@ -2628,3 +2628,127 @@ body[data-theme="dark"] .cuota-pagar {
   .fin-indicadores { grid-template-columns: 1fr 1fr; }
   .fin-alerta-acciones .fin-btn { flex: 1 1 auto; }
 }
+
+/* ============================================================
+   NAVEGACIÓN: sub-tabs de Plata, botón flotante y sheet
+   ============================================================
+   El tabbar bajó de 6 a 4 destinos. Gastos, Cuotas y Panel pasaron a ser
+   secciones de "Plata" y se eligen con este segmentado, que el router mueve
+   dentro de la vista activa. Queda pegajoso arriba porque el que scrollea es
+   #app, no la vista: si no, al bajar en el Panel te quedabas sin forma de
+   cambiar de sección salvo volver arriba del todo. */
+
+.subtabs {
+  position: sticky;
+  top: 0;
+  z-index: 6;
+  display: flex;
+  gap: 3px;
+  margin: 4px 16px 10px;
+  padding: 3px;
+  border-radius: 14px;
+  background: rgba(110, 125, 118, .14);
+  backdrop-filter: blur(18px) saturate(1.5);
+  -webkit-backdrop-filter: blur(18px) saturate(1.5);
+}
+.subtab {
+  flex: 1;
+  border: none;
+  background: transparent;
+  font: 700 .8rem var(--font);
+  color: var(--ink-soft);
+  padding: 9px 2px;
+  border-radius: 11px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background .15s, color .15s, box-shadow .15s;
+}
+.subtab.active {
+  background: #fff;
+  color: var(--ink);
+  box-shadow: 0 2px 8px rgba(35, 64, 50, .18);
+}
+body[data-theme="dark"] .subtabs { background: rgba(255,255,255,.06); }
+body[data-theme="dark"] .subtab.active { background: rgba(255,255,255,.17); color: #fff; box-shadow: none; }
+
+/* ---------- Botón flotante: cargar un gasto desde donde estés ---------- */
+/* Es la acción más repetida de la app y estaba a tres toques (abrir → Gastos →
+   escribir). Acá es uno. Se apila arriba del tabbar, del lado del pulgar. */
+.fab {
+  position: fixed;
+  z-index: 60;
+  right: 16px;
+  bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom) + 12px);
+  display: flex; align-items: center; gap: 6px;
+  height: 48px; padding: 0 18px 0 14px;
+  border: none; border-radius: 999px;
+  /* Naranja propio y no `--accent`: el acento de la app (#f26d3d) da 2,99:1
+     contra el blanco de la etiqueta, y 14px en negrita NO califica como texto
+     grande, así que no llega a AA. Este par da 5,1:1 en el extremo claro y
+     queda en la misma familia que `--tab-on` (#8a2f07). */
+  background: linear-gradient(160deg, #c2410c, #9a3412);
+  color: #fff;
+  font: 800 .88rem var(--font);
+  cursor: pointer;
+  box-shadow: 0 6px 20px rgba(154, 52, 18, .45);
+  transition: transform .15s, box-shadow .2s, opacity .2s;
+}
+.fab:active { transform: scale(.94); }
+.fab-icono { font-size: 1.25rem; line-height: 1; margin-top: -2px; }
+/* Durante una sesión de foco no aparece: ver `show()` en app.js. */
+body[data-foco="corriendo"] .fab { display: none; }
+/* El botón de tema se corre para arriba y no pelea con el flotante. */
+body:has(.fab:not([hidden])) .theme-toggle {
+  bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom) + 70px);
+}
+
+/* ---------- Sheet de alta rápida ---------- */
+.sheet-scrim {
+  position: fixed; inset: 0; z-index: 70;
+  background: rgba(20, 30, 25, .38);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+  animation: scrimIn .2s ease;
+}
+@keyframes scrimIn { from { opacity: 0; } to { opacity: 1; } }
+.sheet {
+  position: fixed; z-index: 71;
+  left: 0; right: 0; bottom: 0;
+  max-width: 520px; margin: 0 auto;
+  max-height: 88dvh;
+  overflow: auto;
+  padding: 6px 0 calc(18px + env(safe-area-inset-bottom));
+  border-radius: 26px 26px 0 0;
+  background: var(--card);
+  backdrop-filter: blur(30px) saturate(1.7);
+  -webkit-backdrop-filter: blur(30px) saturate(1.7);
+  box-shadow: 0 -12px 40px rgba(20, 30, 25, .28);
+  animation: sheetIn .26s cubic-bezier(.2,.9,.3,1.1);
+}
+@keyframes sheetIn { from { transform: translateY(100%); } to { transform: none; } }
+.sheet-tirador {
+  width: 38px; height: 4px; margin: 6px auto 2px;
+  border-radius: 999px; background: rgba(60, 80, 70, .25);
+}
+.sheet-top {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 4px 18px 0;
+}
+.sheet-top h2 { font-size: 1.15rem; font-weight: 800; color: var(--ink); }
+.sheet-cerrar {
+  width: 34px; height: 34px; border: none; border-radius: 50%;
+  background: rgba(110, 125, 118, .16);
+  color: var(--ink-soft); font-size: .95rem; font-weight: 800;
+  cursor: pointer; line-height: 1;
+}
+body[data-theme="dark"] .sheet { background: rgba(28, 34, 44, .92); }
+body[data-theme="dark"] .sheet-tirador { background: rgba(255,255,255,.22); }
+body[data-theme="dark"] .sheet-cerrar { background: rgba(255,255,255,.10); color: #fff; }
+
+/* En el rail lateral de escritorio el flotante estorba menos abajo a la
+   derecha del contenido, no encima de la nav. */
+@media (min-width: 1024px) {
+  .fab { position: absolute; bottom: 20px; right: 20px; }
+  .sheet { position: absolute; border-radius: 26px 26px 0 0; }
+  .sheet-scrim { position: absolute; }
+}

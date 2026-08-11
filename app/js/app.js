@@ -11,6 +11,7 @@ import { initPanel, renderPanel } from './panel.js';
 import { initCotizacion } from './cotizacion.js';
 import { initAjustes } from './ajustes.js';
 import { confirmar } from './dialog.js';
+import { iniciarRouter, onRuta, irA, abrirCapa, cerrarCapa } from './router.js';
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -123,19 +124,65 @@ function ocultarCrecimiento3D() {
   islaCargada = null;
 }
 
-// ---------- Navegación por tabs ----------
-document.querySelectorAll('.tab').forEach(tab => {
-  tab.addEventListener('click', () => {
-    document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t === tab));
-    document.querySelectorAll('.view').forEach(v =>
-      v.classList.toggle('active', v.id === 'view-' + tab.dataset.view));
-    if (tab.dataset.view === 'bosque') renderBosque();
-    if (tab.dataset.view === 'gastos') renderGastos();
-    if (tab.dataset.view === 'cuotas') renderCuotas();
-    if (tab.dataset.view === 'panel') renderPanel();
-    if (tab.dataset.view === 'notas') renderNotas();
-  });
+// ---------- Navegación ----------
+// Los tabs y el segmentado de Plata sólo piden una ruta; quien pinta es el
+// `onRuta` de abajo. Un solo camino, así llegar por link, por tab o por el
+// gesto Atrás terminan exactamente en el mismo estado.
+document.querySelectorAll('.tab').forEach((tab) => {
+  tab.addEventListener('click', () => irA(tab.dataset.view));
 });
+$('#subtabs').addEventListener('click', (e) => {
+  const btn = e.target.closest('.subtab');
+  if (btn) irA('plata', btn.dataset.sub);
+});
+
+/** Qué vista concreta corresponde a una ruta: Plata delega en su sub-sección. */
+const vistaDeRuta = (r) => (r.tab === 'plata' ? r.sub : r.tab);
+
+onRuta((r) => {
+  const vista = vistaDeRuta(r);
+  document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('active', t.dataset.view === r.tab));
+  document.querySelectorAll('.view').forEach((v) => v.classList.toggle('active', v.id === 'view-' + vista));
+
+  // El segmentado es un solo nodo que viaja a la vista activa: tres copias en
+  // el HTML se desincronizan a la primera que alguien toque una sola.
+  const subtabs = $('#subtabs');
+  subtabs.hidden = r.tab !== 'plata';
+  if (r.tab === 'plata') {
+    const destino = $('#view-' + vista);
+    destino.insertBefore(subtabs, destino.querySelector('.view-header')?.nextSibling || destino.firstChild);
+    subtabs.querySelectorAll('.subtab')
+      .forEach((b) => b.classList.toggle('active', b.dataset.sub === r.sub));
+  }
+
+  if (vista === 'bosque') renderBosque();
+  if (vista === 'gastos') renderGastos();
+  if (vista === 'cuotas') renderCuotas();
+  if (vista === 'panel') renderPanel();
+  if (vista === 'notas') renderNotas();
+});
+
+// ---------- Alta rápida de gasto ----------
+// El formulario es el MISMO nodo que antes vivía dentro de la vista Gastos, así
+// que gastos.js sigue enganchado por id y no hay dos caminos de alta que puedan
+// divergir. Acá sólo se abre y se cierra.
+const sheet = $('#sheet-gasto');
+const scrim = $('#sheet-scrim');
+
+function abrirSheetGasto() {
+  if (!sheet.hidden) return;
+  sheet.hidden = false;
+  scrim.hidden = false;
+  abrirCapa(() => { sheet.hidden = true; scrim.hidden = true; });
+  $('#gasto-monto').focus();
+}
+
+$('#fab-gasto').addEventListener('click', abrirSheetGasto);
+$('#sheet-cerrar').addEventListener('click', cerrarCapa);
+scrim.addEventListener('click', cerrarCapa);
+// Cargado el gasto, el sheet se va solo: quedarse abierto con el campo vacío
+// hace dudar de si se guardó.
+document.addEventListener('kbl:gasto-agregado', () => { if (!sheet.hidden) cerrarCapa(); });
 
 // ---------- Selección de duración ----------
 function updateSpeciesHint() {
@@ -157,6 +204,10 @@ function show(state) {
   el.idle.hidden = state !== 'idle';
   el.running.hidden = state !== 'running';
   el.done.hidden = state !== 'done';
+  // Con una sesión corriendo la pantalla es el árbol creciendo y nada más: un
+  // botón naranja de "cargar gasto" flotando encima es exactamente la clase de
+  // distracción que el módulo existe para evitar.
+  document.body.dataset.foco = state === 'running' ? 'corriendo' : '';
 }
 
 function startSession() {
@@ -406,6 +457,9 @@ async function arrancarApp() {
   initCotizacion(); // después de los módulos: al llegar la cotización los repinta
   initIslas();
   resetToIdle(); // render inmediato; el sync ajusta el estado si hace falta
+  // Después de los init: el primer `onRuta` pinta la vista y necesita que los
+  // módulos ya estén enganchados. Acá se decide en qué pantalla abrís.
+  iniciarRouter();
   await initSync(onRemoteChange);
   const active = getActive();
   if (active) {

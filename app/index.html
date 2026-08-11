@@ -120,26 +120,9 @@
         <div class="gasto-cats-resumen" id="gasto-cats-resumen"></div>
       </div>
 
-      <div class="gasto-form">
-        <div class="gasto-foto-row">
-          <input id="gasto-foto-input" type="file" accept="image/*" capture="environment" hidden>
-          <button type="button" class="btn-foto" id="btn-gasto-foto">📷 Cargar por foto</button>
-          <span class="gasto-foto-estado" id="gasto-foto-estado" hidden></span>
-        </div>
-        <div class="monto-row">
-          <input id="gasto-monto" type="text" inputmode="decimal" placeholder="$ 0" autocomplete="off">
-          <div class="seg-moneda" id="gasto-moneda" role="group" aria-label="Moneda">
-            <button type="button" class="seg-op selected" data-moneda="ARS">$</button>
-            <button type="button" class="seg-op" data-moneda="USD">US$</button>
-          </div>
-        </div>
-        <input id="gasto-desc" type="text" placeholder="¿En qué fue? (opcional)" autocomplete="off">
-        <div class="cat-chips" id="cat-chips"></div>
-        <p class="gasto-cat-hint" id="gasto-cat-hint" hidden></p>
-        <div class="cat-chips gasto-tarjeta-row" id="gasto-tarjeta-chips"></div>
-        <button class="btn-primary" id="btn-gasto">Agregar gasto</button>
-      </div>
-
+      <!-- El formulario ya no vive acá: se movió al sheet de abajo, que se abre
+           con el botón flotante desde CUALQUIER vista. Es el mismo nodo, así
+           que gastos.js sigue enganchando por id sin enterarse. -->
       <div class="gastos-lista" id="gastos-lista"></div>
     </section>
 
@@ -388,15 +371,58 @@
       <div class="editor-guardado" id="editor-guardado"></div>
     </div>
 
+    <!-- Sub-navegación de Plata. Vive suelta acá y el router la MUEVE dentro de
+         la vista activa (Gastos / Cuotas / Panel): un solo nodo, una sola
+         fuente de verdad, en vez de tres copias que se desincronizan. -->
+    <nav class="subtabs" id="subtabs" hidden aria-label="Secciones de Plata">
+      <button class="subtab" data-sub="gastos">💸 Gastos</button>
+      <button class="subtab" data-sub="cuotas">💳 Cuotas</button>
+      <button class="subtab" data-sub="panel">📊 Panel</button>
+    </nav>
+
+    <!-- Alta rápida de gasto. Es el MISMO formulario que estaba dentro de la
+         vista Gastos, movido acá: se abre desde cualquier pantalla con el botón
+         flotante y se cierra con Atrás. -->
+    <div class="sheet-scrim" id="sheet-scrim" hidden></div>
+    <div class="sheet" id="sheet-gasto" hidden role="dialog" aria-modal="true" aria-label="Nuevo gasto">
+      <div class="sheet-tirador"></div>
+      <div class="sheet-top">
+        <h2>Nuevo gasto</h2>
+        <button class="sheet-cerrar" id="sheet-cerrar" aria-label="Cerrar">✕</button>
+      </div>
+      <div class="gasto-form">
+        <div class="gasto-foto-row">
+          <input id="gasto-foto-input" type="file" accept="image/*" capture="environment" hidden>
+          <button type="button" class="btn-foto" id="btn-gasto-foto">📷 Cargar por foto</button>
+          <span class="gasto-foto-estado" id="gasto-foto-estado" hidden></span>
+        </div>
+        <div class="monto-row">
+          <input id="gasto-monto" type="text" inputmode="decimal" placeholder="$ 0" autocomplete="off">
+          <div class="seg-moneda" id="gasto-moneda" role="group" aria-label="Moneda">
+            <button type="button" class="seg-op selected" data-moneda="ARS">$</button>
+            <button type="button" class="seg-op" data-moneda="USD">US$</button>
+          </div>
+        </div>
+        <input id="gasto-desc" type="text" placeholder="¿En qué fue? (opcional)" autocomplete="off">
+        <div class="cat-chips" id="cat-chips"></div>
+        <p class="gasto-cat-hint" id="gasto-cat-hint" hidden></p>
+        <div class="cat-chips gasto-tarjeta-row" id="gasto-tarjeta-chips"></div>
+        <button class="btn-primary" id="btn-gasto">Agregar gasto</button>
+      </div>
+    </div>
+
+    <button id="fab-gasto" class="fab" aria-label="Cargar un gasto">
+      <span class="fab-icono">＋</span><span class="fab-texto">Gasto</span>
+    </button>
+
     <button id="theme-toggle" class="theme-toggle" title="Cambiar tema" aria-label="Cambiar tema">🌙</button>
 
-    <!-- Tab bar -->
+    <!-- Tab bar. Cuatro destinos: Gastos, Cuotas y Panel viven adentro de
+         Plata. En un iPhone de 375px cada tab pasa de 62 a 94px. -->
     <nav class="tabbar">
       <button class="tab active" data-view="foco"><span class="tab-icon">🌱</span><span>Foco</span></button>
       <button class="tab" data-view="bosque"><span class="tab-icon">🌳</span><span>Bosque</span></button>
-      <button class="tab" data-view="gastos"><span class="tab-icon">💸</span><span>Gastos</span></button>
-      <button class="tab" data-view="cuotas"><span class="tab-icon">💳</span><span>Cuotas</span></button>
-      <button class="tab" data-view="panel"><span class="tab-icon">📊</span><span>Panel</span></button>
+      <button class="tab" data-view="plata"><span class="tab-icon">💳</span><span>Plata</span></button>
       <button class="tab" data-view="notas"><span class="tab-icon">✍️</span><span>Notas</span></button>
     </nav>
   </main>

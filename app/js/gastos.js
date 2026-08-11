@@ -197,6 +197,10 @@ function agregar() {
   if (hint) hint.hidden = true;
   render();
   $('#gasto-monto').focus();
+  // El alta vive en un sheet que se abre desde cualquier vista (ver app.js).
+  // Se avisa en vez de cerrarlo acá para que este módulo no sepa nada de dónde
+  // está montado su propio formulario.
+  document.dispatchEvent(new CustomEvent('kbl:gasto-agregado'));
 }
 
 export function initGastos() {

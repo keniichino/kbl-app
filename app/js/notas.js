@@ -1,6 +1,7 @@
 // ====== Módulo Notas — lista + editor con autosave ======
 import { getNotas, upsertNota, removeNota } from './store.js';
 import { confirmar } from './dialog.js';
+import { abrirCapa, cerrarCapa } from './router.js';
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -61,9 +62,17 @@ function abrirEditor(nota) {
   $('#editor-guardado').textContent = '';
   $('#nota-editor').hidden = false;
   lockScrollMientrasEditor(true);
+  // El editor tapa la pantalla entera y en una PWA no hay barra del navegador:
+  // sin esto el gesto de volver no lo cerraba (y en Android cerraba la app).
+  // Es la causa raíz del viejo "no puedo salir de Notas"; el fix anterior
+  // atacó la cascada del [hidden], que era el otro síntoma.
+  abrirCapa(cerrarEditor);
   if (!nota.titulo) $('#editor-titulo').focus();
 }
 
+/** Cierre REAL. Lo llama el router cuando el usuario vuelve atrás — nadie más
+ * debería invocarlo, o el historial queda con una entrada colgada. Para cerrar
+ * desde un botón va `cerrarCapa()`, que dispara el mismo camino. */
 function cerrarEditor() {
   // No guardar notas totalmente vacías
   if (notaAbierta && !$('#editor-titulo').value.trim() && !$('#editor-contenido').value.trim()) {
@@ -101,20 +110,21 @@ export function initNotas() {
     if (nota) abrirEditor(nota);
   });
 
-  $('#editor-volver').addEventListener('click', cerrarEditor);
+  // Todas las salidas pasan por `cerrarCapa()` — botón, Escape y borrar — así
+  // el historial acompaña y el gesto Atrás hace exactamente lo mismo.
+  $('#editor-volver').addEventListener('click', cerrarCapa);
 
   // Salida de emergencia: Escape cierra el editor (además del botón)
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && !$('#nota-editor').hidden) cerrarEditor();
+    if (e.key === 'Escape' && !$('#nota-editor').hidden) cerrarCapa();
   });
   $('#editor-borrar').addEventListener('click', async () => {
     if (!notaAbierta) return;
     const ok = await confirmar({ titulo: '¿Borrar esta nota?', accion: 'Borrar', destructivo: true });
     if (ok) {
       removeNota(notaAbierta.id);
-      notaAbierta = null;
-      $('#nota-editor').hidden = true;
-      renderLista();
+      notaAbierta = null;   // así `cerrarEditor` no intenta borrarla de nuevo
+      cerrarCapa();
     }
   });
 

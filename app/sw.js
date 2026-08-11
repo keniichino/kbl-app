@@ -1,12 +1,13 @@
 // ====== Service Worker — offline + actualizaciones al abrir ======
 // Estrategia: red-primero para HTML/CSS/JS (así cada deploy llega al abrir la
 // app), caché como respaldo offline. Cache-first solo para íconos y fuentes.
-const CACHE = 'kbl-v39';
+const CACHE = 'kbl-v40';
 const ASSETS = [
   './',
   './index.html',
   './css/app.css',
   './js/app.js',
+  './js/router.js',
   './js/store.js',
   './js/tree.js',
   './js/config.js',
