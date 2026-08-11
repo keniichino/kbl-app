@@ -474,11 +474,15 @@ export function fotoDelMes(mes, ctx, base = 'caja') {
   // ese período. Sin esto la Visa desaparecía de Caja: no entra en `varCaja`
   // (es crédito) ni en `cuotas` (no es un plan), y agosto/2026 daba ~$0 cuando
   // en realidad se debitaban $1.897.243.
+  // Usa `resumenPeriodo` (misma cuenta que Cuotas) en vez de sumar `gastos`
+  // directo: así una suscripción de tarjeta que todavía no cobró este período
+  // ya cuenta con su monto declarado, en vez de aparecer recién cuando el
+  // gasto real se carga.
   const tarjetaPeriodo = cero();
-  for (const g of (ctx.gastosPorPeriodo?.get(mes) || [])) {
-    if (!credito.has(g.tarjeta)) continue;   // el efectivo ya está en varCaja
-    if (g.reintegro) continue;               // lo pagaste por otro: mismo criterio que arriba
-    sumar(tarjetaPeriodo, g.monto, g.moneda);
+  for (const key of credito) {
+    const { compras } = resumenPeriodo(key, mes, ctx);
+    sumar(tarjetaPeriodo, compras.ars, 'ARS');
+    sumar(tarjetaPeriodo, compras.usd, 'USD');
   }
 
   const cuotas = ctx.calCuotas.get(mes) || cero();
