@@ -272,9 +272,18 @@ export function calendarioCuotas(cuotas) {
  * cualquier período, pasado, presente o futuro (para eso están los dos
  * índices de `contexto()`).
  *
+ * Sin conexión directa con el banco, una suscripción sólo se sabía cobrada
+ * cuando su gasto ya estaba cargado — así que el período abierto siempre se
+ * quedaba corto (Netflix, Spotify, etc. cobran a fin de mes y hasta entonces
+ * no sumaban nada). Acá cada suscripción de esta tarjeta cuenta desde ya: si
+ * su gasto real de este período existe, ese monto manda; si no llegó
+ * todavía, se usa el monto declarado del concepto. En cuanto el gasto real
+ * aparece, se lo excluye del resto (`matcheados`) para no contarlo dos veces.
+ *
  * `soloPendiente` saca las cuotas que ya se marcaron pagadas (para la alerta
- * de vencimiento, que sólo quiere avisar por lo que falta). Los gastos no
- * tienen ese concepto — se resuelve a nivel resumen con `pagos_resumen`, no acá.
+ * de vencimiento, que sólo quiere avisar por lo que falta). Los gastos —
+ * reales o proyectados por suscripción — no tienen ese concepto: se resuelve
+ * a nivel resumen con `pagos_resumen`, no acá.
  */
 export function resumenPeriodo(tarjeta, periodo, ctx, { soloPendiente = false } = {}) {
   const cuotas = cero();
@@ -284,8 +293,22 @@ export function resumenPeriodo(tarjeta, periodo, ctx, { soloPendiente = false } 
     if (soloPendiente && i.pagada) continue;
     sumar(cuotas, i.monto, i.moneda);
   }
+
+  const matcheados = new Set();
+  for (const r of ctx.recurrentes) {
+    if (r.tipo !== 'suscripcion') continue;
+    if (medioDeConcepto(r, periodo, ctx) !== tarjeta) continue;
+    if (!vigenteEn(r, periodo, ctx)) continue;
+    const reales = (ctx.gastosPorPeriodo.get(periodo) || []).filter(
+      (g) => ctx.match.get(g.id) === r.id && !g.reintegro && (g.moneda || 'ARS') === r.moneda
+    );
+    reales.forEach((g) => matcheados.add(g.id));
+    const monto = reales.length ? reales.reduce((a, g) => a + g.monto, 0) : montoDeclarado(r, periodo);
+    if (monto) sumar(compras, monto, r.moneda);
+  }
+
   for (const g of (ctx.gastosPorPeriodo?.get(periodo) || [])) {
-    if (g.tarjeta !== tarjeta || g.reintegro) continue;
+    if (g.tarjeta !== tarjeta || g.reintegro || matcheados.has(g.id)) continue;
     sumar(compras, g.monto, g.moneda);
   }
   return { cuotas, compras, total: masMontos(cuotas, compras) };
