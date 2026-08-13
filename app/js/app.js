@@ -11,7 +11,8 @@ import { initPanel, renderPanel } from './panel.js';
 import { initCotizacion } from './cotizacion.js';
 import { initAjustes } from './ajustes.js';
 import { confirmar } from './dialog.js';
-import { iniciarRouter, onRuta, irA, abrirCapa, cerrarCapa } from './router.js';
+import { iniciarRouter, onRuta, irA, abrirCapa, cerrarCapa, rutaActual } from './router.js';
+import { plegarPanel } from './panel-plegable.js';
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -139,26 +140,65 @@ $('#subtabs').addEventListener('click', (e) => {
 /** Qué vista concreta corresponde a una ruta: Plata delega en su sub-sección. */
 const vistaDeRuta = (r) => (r.tab === 'plata' ? r.sub : r.tab);
 
+// ---------- Sidebar de escritorio ----------
+// Dos casas para el MISMO `#subtabs`: adentro de la vista en mobile (pegajoso
+// arriba, como venía) y adentro del sidebar en escritorio, donde ya es un
+// submenú desplegado bajo Plata. Sigue siendo un solo nodo — que es lo que
+// evita que dos copias digan cosas distintas.
+const anchoEscritorio = window.matchMedia('(min-width: 1024px)');
+const K_SB = 'kbl.sidebar.colapsado';
+
+/** Mueve `#subtabs` a la casa que corresponde al ancho actual. */
+function montarSubtabs(r) {
+  const subtabs = $('#subtabs');
+  subtabs.hidden = r.tab !== 'plata';
+  if (r.tab !== 'plata') return;
+
+  if (anchoEscritorio.matches) {
+    const sub = $('#sb-sub');
+    if (subtabs.parentElement !== sub) sub.appendChild(subtabs);
+  } else {
+    const destino = $('#view-' + vistaDeRuta(r));
+    if (subtabs.parentElement !== destino) {
+      destino.insertBefore(subtabs, destino.querySelector('.view-header')?.nextSibling || destino.firstChild);
+    }
+  }
+  subtabs.querySelectorAll('.subtab')
+    .forEach((b) => b.classList.toggle('active', b.dataset.sub === r.sub));
+}
+
+// Cruzar el breakpoint (rotar la tablet, achicar la ventana) tiene que
+// remontar el segmentado; si no, queda huérfano en la casa equivocada.
+anchoEscritorio.addEventListener('change', () => montarSubtabs(rutaActual()));
+
+const sidebar = $('#sidebar');
+const sbToggle = $('#sb-toggle');
+
+function pintarSidebar(colapsado) {
+  sidebar.classList.toggle('colapsado', colapsado);
+  sbToggle.setAttribute('aria-expanded', String(!colapsado));
+  sbToggle.setAttribute('aria-label', colapsado ? 'Expandir menú' : 'Contraer menú');
+}
+
+try { pintarSidebar(localStorage.getItem(K_SB) === '1'); } catch { /* modo privado */ }
+
+sbToggle.addEventListener('click', () => {
+  const colapsado = !sidebar.classList.contains('colapsado');
+  pintarSidebar(colapsado);
+  try { localStorage.setItem(K_SB, colapsado ? '1' : '0'); } catch { /* modo privado */ }
+});
+
 onRuta((r) => {
   const vista = vistaDeRuta(r);
   document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('active', t.dataset.view === r.tab));
   document.querySelectorAll('.view').forEach((v) => v.classList.toggle('active', v.id === 'view-' + vista));
 
-  // El segmentado es un solo nodo que viaja a la vista activa: tres copias en
-  // el HTML se desincronizan a la primera que alguien toque una sola.
-  const subtabs = $('#subtabs');
-  subtabs.hidden = r.tab !== 'plata';
-  if (r.tab === 'plata') {
-    const destino = $('#view-' + vista);
-    destino.insertBefore(subtabs, destino.querySelector('.view-header')?.nextSibling || destino.firstChild);
-    subtabs.querySelectorAll('.subtab')
-      .forEach((b) => b.classList.toggle('active', b.dataset.sub === r.sub));
-  }
+  montarSubtabs(r);
 
   if (vista === 'bosque') renderBosque();
   if (vista === 'gastos') renderGastos();
   if (vista === 'cuotas') renderCuotas();
-  if (vista === 'panel') renderPanel();
+  if (vista === 'panel') { renderPanel(); plegarPanel(); }
   if (vista === 'notas') renderNotas();
 });
 

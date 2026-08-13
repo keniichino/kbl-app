@@ -2775,3 +2775,234 @@ body[data-theme="dark"] .sheet-cerrar { background: rgba(255,255,255,.10); color
   .sheet { position: absolute; border-radius: 26px 26px 0 0; }
   .sheet-scrim { position: absolute; }
 }
+
+/* ====================================================================
+   NAV LATERAL DE ESCRITORIO  (2026-08-12)
+   ====================================================================
+   Antes, arriba de 1024px, la nav era el MISMO `.tabbar` puesto en
+   vertical: una tira de 92px con iconos y etiquetas de 0,64rem. Se leía
+   como un rail de iconos, no como un menú — y no había forma de ver las
+   tres secciones de Plata sin entrar primero a Plata.
+
+   Acá el sidebar es su propio nodo con etiquetas de verdad y el submenú
+   de Plata siempre a la vista. NO duplica estado: sus botones llevan
+   `.tab` + `data-view`, las mismas clases que engancha `app.js`, así que
+   sidebar y tabbar son dos pieles del mismo router.
+
+   El otro cambio grande es el tamaño: `#app` estaba clavado en 960×780
+   dentro de una pantalla de 1920, y todo el scroll de más venía de ahí. */
+
+/* En mobile el sidebar no existe y `.vistas` desaparece del layout, así
+   el árbol de cajas queda idéntico al de antes de este bloque. */
+.sidebar { display: none; }
+.vistas { display: contents; }
+
+@media (min-width: 1024px) {
+  #app {
+    width: min(96vw, 1500px);
+    flex: 0 0 auto;
+    height: 94dvh;
+    max-height: none;
+  }
+
+  /* El tabbar de abajo se retira: en escritorio manda el sidebar. */
+  .tabbar { display: none; }
+
+  .vistas {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-width: 0;
+    height: 100%;
+    overflow: hidden;
+  }
+
+  .sidebar {
+    display: flex;
+    flex-direction: column;
+    /* `flex-basis: auto` a propósito: con `flex: 0 0 <largo>` había DOS
+       propiedades definiendo el ancho y las dos en la transición, y el
+       resultado era que el ancho no cambiaba nunca. Acá manda `width` sola. */
+    flex: 0 0 auto;
+    width: 232px;
+    /* Los dos son obligatorios y van en la regla BASE, no en `.colapsado`:
+       un flex item trae `min-width: auto`, que le pone como piso su ancho de
+       contenido — sin esto el `flex-basis: 72px` del colapsado se ignora en
+       silencio. Y si cambian junto con el ancho, el navegador mezcla una
+       propiedad discreta con una animada y el ancho queda pegado en el valor
+       viejo. Acá son constantes y lo único que varía es el ancho. */
+    min-width: 0;
+    overflow: hidden auto;
+    height: 100%;
+    padding: 14px 12px;
+    gap: 10px;
+    background: linear-gradient(180deg, rgba(255,255,255,.55), rgba(255,255,255,.3));
+    backdrop-filter: blur(30px) saturate(1.7);
+    -webkit-backdrop-filter: blur(30px) saturate(1.7);
+    border-right: 1px solid rgba(255,255,255,.5);
+    box-shadow: inset -1px 0 0 rgba(255,255,255,.6);
+  }
+  /* Colapsado: sólo iconos, y el cambio de ancho es INSTANTÁNEO a propósito.
+     Con `transition: width` acá el ancho no cambiaba nunca: este elemento
+     tiene `backdrop-filter`, y en Chromium una transición de layout sobre un
+     elemento compuesto en su propia capa se queda congelada en el valor
+     viejo. Medido: con la clase puesta y transición seguía en 232px — hasta
+     un `style.width='72px'` inline se ignoraba —; con `transition:none` da
+     72px al toque. El colapso sin animar funciona; animado, no funciona. */
+  #sidebar.colapsado { width: 72px; }
+
+  .sb-top {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 4px 6px 10px;
+    border-bottom: 1px solid rgba(110,125,118,.16);
+  }
+  .sb-marca {
+    font: 900 1.05rem var(--font);
+    letter-spacing: .04em;
+    color: var(--tab-on);
+    white-space: nowrap;
+  }
+  .sb-toggle {
+    flex: 0 0 auto;
+    width: 28px; height: 28px;
+    border: none; border-radius: 9px;
+    background: rgba(110,125,118,.14);
+    color: var(--ink-soft);
+    font: 800 1rem var(--font); line-height: 1;
+    cursor: pointer;
+    transition: background .15s, transform .22s;
+  }
+  .sb-toggle:hover { background: rgba(110,125,118,.24); }
+
+  .sb-lista { list-style: none; display: flex; flex-direction: column; gap: 3px; }
+
+  /* Sobrescribe el `.tab` de mobile (columna, centrado, 0,7rem): acá es una
+     fila con etiqueta legible. */
+  .sb-item {
+    width: 100%;
+    flex-direction: row;
+    justify-content: flex-start;
+    gap: 12px;
+    padding: 11px 12px;
+    border-radius: 13px;
+    font: 800 .92rem var(--font);
+    white-space: nowrap;
+  }
+  .sb-item:active { transform: scale(.97); }
+  .sb-ico { font-size: 1.2rem; line-height: 1; flex: 0 0 22px; text-align: center; }
+  .sb-item.active { border-radius: 13px; }
+
+  /* ---- Submenú de Plata ---- */
+  /* `#subtabs` es el nodo único que ya movía el router; acá sólo cambia de
+     casa y de orientación. Se oculta con Plata cerrada porque el propio
+     router le pone `hidden`. */
+  .sb-sub { padding: 3px 0 3px 16px; }
+  .sb-sub .subtabs {
+    position: static;
+    flex-direction: column;
+    gap: 1px;
+    margin: 0;
+    padding: 4px;
+    background: rgba(110,125,118,.10);
+    border-radius: 12px;
+  }
+  .sb-sub .subtab {
+    text-align: left;
+    padding: 8px 10px;
+    font-size: .82rem;
+    border-radius: 9px;
+  }
+
+  /* Con el menú colapsado la etiqueta desaparece y el icono se centra.
+     `.sb-sub` se va entero: un submenú de texto en 72px no entra. */
+  #sidebar.colapsado .sb-txt,
+  #sidebar.colapsado .sb-marca,
+  #sidebar.colapsado .sb-sub { display: none; }
+  #sidebar.colapsado .sb-item { justify-content: center; padding: 11px 0; }
+  #sidebar.colapsado .sb-top { justify-content: center; }
+  #sidebar.colapsado .sb-toggle { transform: rotate(180deg); }
+
+  /* El flotante de gasto se posiciona contra el área de contenido, no
+     contra `#app`: con el sidebar de 232px quedaba corrido. */
+  .vistas { position: relative; }
+}
+
+/* Pantallas anchas de verdad: el Panel gana una tercera columna en vez de
+   estirar las tarjetas a lo ancho, que es lo que hacía el scroll largo. */
+@media (min-width: 1500px) {
+  #app { height: 96dvh; }
+}
+
+/* ---- Tema oscuro ---- */
+body[data-theme="dark"] .sidebar {
+  background: linear-gradient(180deg, rgba(255,255,255,.07), rgba(255,255,255,.03));
+  border-right: 1px solid rgba(255,255,255,.09);
+  box-shadow: none;
+}
+body[data-theme="dark"] .sb-top { border-bottom-color: rgba(255,255,255,.10); }
+body[data-theme="dark"] .sb-marca { color: #ffb08a; }
+body[data-theme="dark"] .sb-toggle { background: rgba(255,255,255,.10); color: #fff; }
+body[data-theme="dark"] .sb-toggle:hover { background: rgba(255,255,255,.18); }
+body[data-theme="dark"] .sb-sub .subtabs { background: rgba(255,255,255,.05); }
+
+@media (prefers-reduced-motion: reduce) {
+  .sb-toggle { transition: none; }
+}
+
+/* `.subtabs` declara `display:flex`, que le gana al atributo `hidden` — el
+   nodo seguía ocupando lugar aunque el router lo marcara oculto. En mobile
+   pasaba como un hueco; en escritorio, donde `#app` es una fila, se comía
+   233px del ancho del contenido. */
+.subtabs[hidden] { display: none; }
+
+/* ====== Panel: secciones plegables ====== */
+/* Ver `js/panel-plegable.js`. El <summary> es la única parte visible cuando
+   la sección está cerrada, así que tiene que leerse como una fila de lista,
+   no como un título suelto. */
+.fin-pleg { margin: 0 16px 10px; }
+.fin-pleg-sum {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 13px 16px;
+  border-radius: 16px;
+  background: var(--card);
+  box-shadow: var(--shadow-soft);
+  font: 800 .95rem var(--font);
+  color: var(--ink);
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+.fin-pleg-sum::-webkit-details-marker { display: none; }
+.fin-pleg-sum:active { transform: scale(.99); }
+.fin-pleg-chevron {
+  font-size: 1.2rem; font-weight: 800; color: var(--ink-soft);
+  transform: rotate(90deg);
+  transition: transform .18s cubic-bezier(.2,.9,.3,1);
+}
+.fin-pleg[open] > .fin-pleg-sum {
+  border-radius: 16px 16px 0 0;
+  box-shadow: none;
+  background: color-mix(in srgb, var(--card) 100%, transparent);
+}
+.fin-pleg[open] > .fin-pleg-sum .fin-pleg-chevron { transform: rotate(-90deg); }
+
+/* El contenido ya trae su propia `.fin-card` con margen: adentro del
+   plegable ese margen lateral sobra y desalinea contra el summary. */
+.fin-pleg > div { margin: 0; }
+.fin-pleg > div > .fin-card { margin: 0; border-radius: 0 0 16px 16px; }
+/* El título interno duplicaría el del summary. Se oculta sólo el <h2>, no el
+   head entero: ahí viven botones como "Actualizar" de Mercado. */
+.fin-pleg > div > .fin-card > .fin-card-head > h2 { display: none; }
+.fin-pleg > div > .fin-card > .fin-card-head:empty { display: none; }
+
+body[data-theme="dark"] .fin-pleg-sum { color: #fff; }
+
+@media (prefers-reduced-motion: reduce) {
+  .fin-pleg-chevron { transition: none; }
+}
+
+/* En escritorio hay ancho de sobra: las plegables van a dos columnas para
+   que abrir tres no empuje todo lo de abajo fuera de pantalla. */
+@media (min-width: 1024px) {
+  .fin-pleg { margin: 0 0 10px; }
+}

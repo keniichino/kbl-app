@@ -21,6 +21,49 @@
 
   <main id="app">
 
+    <!-- ============ NAV LATERAL (sólo ≥1024px) ============ -->
+    <!-- Los botones llevan `.tab` a propósito: el listener de app.js engancha
+         por esa clase y `onRuta` les pone `.active`, así el sidebar y el
+         tabbar de abajo son dos pieles del MISMO estado, sin JS duplicado ni
+         posibilidad de que digan cosas distintas. El submenú de Plata queda
+         vacío en el HTML: el router monta ahí el nodo único `#subtabs`. -->
+    <nav class="sidebar" id="sidebar" aria-label="Navegación principal">
+      <div class="sb-top">
+        <span class="sb-marca">KBL</span>
+        <button class="sb-toggle" id="sb-toggle" aria-expanded="true"
+                aria-controls="sidebar" aria-label="Contraer menú">‹</button>
+      </div>
+
+      <ul class="sb-lista">
+        <li>
+          <button class="tab sb-item" data-view="foco">
+            <span class="sb-ico">🌱</span><span class="sb-txt">Foco</span>
+          </button>
+        </li>
+        <li>
+          <button class="tab sb-item" data-view="bosque">
+            <span class="sb-ico">🌳</span><span class="sb-txt">Bosque</span>
+          </button>
+        </li>
+        <li>
+          <button class="tab sb-item" data-view="plata">
+            <span class="sb-ico">💳</span><span class="sb-txt">Plata</span>
+          </button>
+          <div class="sb-sub" id="sb-sub"></div>
+        </li>
+        <li>
+          <button class="tab sb-item" data-view="notas">
+            <span class="sb-ico">✍️</span><span class="sb-txt">Notas</span>
+          </button>
+        </li>
+      </ul>
+    </nav>
+
+    <!-- Envuelve todas las vistas para que el sidebar sea hermano del
+         contenido y no de cada sección. En mobile es transparente (display
+         contents), así el layout de siempre no cambia en nada. -->
+    <div class="vistas" id="vistas">
+
     <!-- ============ VISTA: FOCO ============ -->
     <section id="view-foco" class="view active">
       <div class="scene" id="scene">
@@ -359,6 +402,8 @@
       <div class="fin-pie">Los números salen de lo que cargaste en Gastos, Cuotas y acá.
         Pesos y dólares no se suman entre sí: el equivalente se calcula a la cotización que elijas.</div>
     </section>
+
+    </div><!-- /.vistas -->
 
     <!-- Editor de nota (overlay a pantalla completa) -->
     <div class="nota-editor" id="nota-editor" hidden>
