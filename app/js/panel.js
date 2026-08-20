@@ -651,27 +651,28 @@ function renderDeuda(ctx) {
     </div>`;
 }
 
+/**
+ * El ahorro pasó a tener pantalla propia (`ahorro.js`): curva proyectada,
+ * objetivos con progreso real, stock y fugas. Acá queda el número y la puerta.
+ *
+ * Antes esta tarjeta traía su propia "meta del X% del ingreso", que competía
+ * con los objetivos de la otra pantalla: dos metas distintas para la misma
+ * plata. La que sobrevive es la de Ahorro, porque tiene plata real detrás.
+ */
 function renderAhorro(fotos, ctx) {
-  const ahorros = ctx.ahorros;
   const stock = cero();
-  for (const a of ahorros) {
+  for (const a of ctx.ahorros) {
     if (a.fecha.slice(0, 7) > mesSel) continue;      // respeta el mes que estás mirando
-    if (a.tipo === 'retiro') sumar(stock, -a.monto, a.moneda);
-    else sumar(stock, a.monto, a.moneda);
+    sumar(stock, a.tipo === 'retiro' ? -a.monto : a.monto, a.moneda);
   }
-  const foto = ctx.foto;
-  const neto = equiv(foto.aportes) - equiv(foto.retiros);
-  const ing = equiv(foto.ingresos);
-  const meta = Number(cfg().meta ?? 20);
-  const objetivo = ing * (meta / 100);
-  const avance = objetivo ? Math.min(neto / objetivo, 1) : 0;
-  const ultimos = ahorros.slice().sort((a, b) => b.fecha.localeCompare(a.fecha)).slice(0, 4);
+  const neto = equiv(ctx.foto.aportes) - equiv(ctx.foto.retiros);
+  const ing = equiv(ctx.foto.ingresos);
 
   return `
-    <div class="fin-card">
+    <a class="fin-card fin-card--link" href="#/plata/ahorro">
       <div class="fin-card-head">
         <h2>Ahorro</h2>
-        <span class="fin-card-sub">stock acumulado</span>
+        <span class="fin-card-sub">ver curva y objetivos ›</span>
       </div>
       <div class="fin-duo">
         <div><div class="fin-duo-key">Acumulado</div><div class="fin-duo-val">${plata(stock)}
@@ -679,26 +680,7 @@ function renderAhorro(fotos, ctx) {
         <div><div class="fin-duo-key">Este mes</div><div class="fin-duo-val ${neto >= 0 ? '' : 'fin-mal'}">${fmtARS.format(neto)}
           ${ing ? `<span class="fin-duo-nota">tasa ${pct(neto / ing)}</span>` : ''}</div></div>
       </div>
-      ${ing ? `
-        <div class="fin-meta">
-          <div class="fin-meta-head">
-            <span>Meta: <b>${meta}%</b> del ingreso (${fmtARS.format(objetivo)})</span>
-            <span class="${neto >= objetivo ? 'fin-ok' : 'fin-soft'}">${neto >= objetivo ? '✓ cumplida' : `faltan ${fmtARS.format(objetivo - neto)}`}</span>
-          </div>
-          <div class="fin-meta-barra"><div class="fin-meta-fill" style="width:${(avance * 100).toFixed(1)}%"></div></div>
-        </div>` : ''}
-      ${ultimos.length ? `
-        <div class="fin-movs">
-          ${ultimos.map((a) => `
-            <div class="fin-mov">
-              <span class="fin-mov-icon">${a.tipo === 'retiro' ? '↙' : '↗'}</span>
-              <span class="fin-mov-desc">${escapar(a.destino) || (a.tipo === 'retiro' ? 'Retiro' : 'Aporte')}
-                <span class="fin-mov-fecha">${new Date(a.fecha + 'T00:00:00').toLocaleDateString('es-AR', { day: 'numeric', month: 'short' })}</span></span>
-              <span class="fin-mov-monto ${a.tipo === 'retiro' ? 'fin-mal' : 'fin-ok'}">${a.tipo === 'retiro' ? '−' : '+'}${fmtMoneda(a.monto, a.moneda)}</span>
-            </div>`).join('')}
-        </div>` : `<div class="fin-vacio"><p>Sin movimientos de ahorro.</p>
-          <p class="fin-vacio-sub">Registrá cada vez que apartás plata (o comprás dólares) y el panel te dice qué tasa de ahorro sostenés.</p></div>`}
-    </div>`;
+    </a>`;
 }
 
 /**

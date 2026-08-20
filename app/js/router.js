@@ -17,7 +17,7 @@
 //             vez de cerrar la app.
 
 const TABS = ['foco', 'bosque', 'plata', 'notas'];
-const SUBS = ['gastos', 'cuotas', 'panel'];
+const SUBS = ['gastos', 'cuotas', 'ahorro', 'panel'];
 const SUB_POR_DEFECTO = 'gastos';
 
 const K_RUTA = 'kbl.ruta';

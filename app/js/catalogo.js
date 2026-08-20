@@ -72,7 +72,12 @@ export const COMERCIOS = [
   { m: /sportclub|megatlon|gimnasio|\bgym\b/, nombre: 'Gimnasio', cat: 'salud', clase: 'fijo' },
 
   // ---- Educación ----
-  { m: /uade|universidad|\bucema\b|\butn\b|\buba\b|colegio|instituto/, nombre: 'Facultad', cat: 'otros', clase: 'fijo' },
+  { m: /uade|universidad|\bucema\b|\butn\b|\buba\b|colegio|instituto|educacionit/, nombre: 'Facultad', cat: 'educacion', clase: 'fijo' },
+
+  // ---- Impuestos, patentes y multas ----
+  // ACARA es patentamiento; ARBA/AGIP/ARCA y "rentas" son los organismos que
+  // aparecen en el resumen cuando pagás una patente o una multa.
+  { m: /\bacara\b|\barba\b|\bagip\b|\barca\b|\bafip\b|rentas|patente|multa|infraccion/, nombre: 'Impuestos', cat: 'impuestos', clase: 'variable' },
 
   // ---- Supermercados ----
   { m: /coto|carrefour|jumbo|disco|\bvea\b|\bdia\b|changomas|chango mas|walmart|makro|la anonima|maxiconsumo|diarco|libertad/, nombre: 'Súper', cat: 'super', clase: 'variable' },

@@ -112,7 +112,10 @@ export const hayUsd = (v) => v.usd > 0.005;
 export const TARJETAS_CREDITO = new Set(['visa', 'mac', 'mp']);
 
 // Lo que NUNCA es crédito, por más que aparezca en la lista de medios.
-const NO_CREDITO = new Set(['efectivo', 'debito', 'transferencia', 'caja']);
+// `mpc` (dinero en cuenta de Mercado Pago) y `nx` (prepaga Naranja X) son
+// plata que YA salió: no tienen resumen ni cierre. Si quedaran del lado
+// crédito, sus gastos desaparecerían de la caja del mes.
+const NO_CREDITO = new Set(['efectivo', 'debito', 'transferencia', 'caja', 'mpc', 'nx']);
 
 /**
  * Set de medios que se pagan por resumen. Arranca del legacy hardcodeado y se
@@ -699,4 +702,143 @@ export function ritmoDisponible(foto, eq, hoy = new Date()) {
     gastadoPorDia: eq(foto.varConsumo) / Math.max(1, diaHoy),
     finMes,
   };
+}
+
+// ---------- Curva de ahorro ----------
+// La pregunta que contesta: "si sigo viviendo como vengo viviendo, ¿cuánta
+// plata me sobra cada mes de acá en adelante, y cuánto junto en total?".
+
+export const mediana = (xs) => {
+  if (!xs.length) return 0;
+  const s = xs.slice().sort((a, b) => a - b);
+  const m = s.length >> 1;
+  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+};
+
+/**
+ * Lo que se gasta en un mes sin decidirlo cada vez (súper, comida, transporte,
+ * salidas), en pesos equivalentes.
+ *
+ * MEDIANA y no promedio: un mes con una compra grande arrastraría el promedio
+ * para arriba durante medio año. Y sólo meses CERRADOS — el mes en curso está
+ * a medio hacer y bajaría el número justo cuando más importa que no mienta.
+ */
+export function variableTipico(ctx, eq, { meses = 3, hasta = MES_HOY } = {}) {
+  const vals = [];
+  for (let i = 1; i <= meses; i++) {
+    const v = eq(fotoDelMes(addMes(hasta, -i), ctx, 'consumo').varConsumo);
+    if (v > 0) vals.push(v);
+  }
+  return mediana(vals);
+}
+
+/**
+ * Ahorro posible mes a mes y su acumulado.
+ *
+ * Por mes: ingreso − egreso de caja YA conocido − el consumo variable que
+ * todavía no ocurrió. Ese último término es la parte delicada: los meses
+ * futuros no tienen gastos cargados, así que sin él la curva diría que sobra
+ * todo el sueldo. Y no se puede sumar de una porque los primeros meses SÍ
+ * traen consumo real — el resumen de tarjeta ya cerrado. Por eso se resta
+ * sólo lo que FALTA para llegar al ritmo típico, nunca menos de cero.
+ */
+export function curvaAhorro(ctx, eq, { meses = 12, desde = MES_HOY } = {}) {
+  const tipico = variableTipico(ctx, eq);
+  const filas = [];
+  let acumulado = 0;
+
+  for (let i = 0; i < meses; i++) {
+    const mes = addMes(desde, i);
+    const f = fotoDelMes(mes, ctx, 'caja');
+    const ingreso = eq(f.ingresos);
+    const comprometido = eq(f.egresoCaja);
+    // Consumo variable que este mes ya tiene contabilizado: lo que sale por
+    // caja + los consumos de tarjeta cuyo resumen vence justo este mes.
+    const yaIncluido = eq(f.varCaja) + eq(f.tarjetaPeriodo);
+    const faltante = Math.max(0, tipico - yaIncluido);
+    const ahorro = ingreso - comprometido - faltante;
+    acumulado += ahorro;
+    filas.push({
+      mes, ingreso, comprometido, faltante, ahorro, acumulado,
+      cuotas: eq(f.cuotas),
+      estructural: eq(f.estructuralTotal),
+      tarjeta: eq(f.tarjetaPeriodo),
+      tasa: ingreso ? ahorro / ingreso : 0,
+    });
+  }
+  return { tipico, filas };
+}
+
+/**
+ * Suscripciones declaradas contra la realidad de los últimos meses.
+ *
+ * Tres estados y cada uno es una acción distinta:
+ *   · `ok`        — se cobró, y por lo que decís que sale.
+ *   · `desviada`  — se cobró por otra plata (más de 15% de diferencia): el
+ *                   monto declarado quedó viejo y toda proyección que lo use
+ *                   está mal.
+ *   · `fantasma`  — no se cobró en los últimos `dias`. O la diste de baja y
+ *                   sigue inflando el gasto fijo, o el cargo cambió de nombre.
+ */
+export function auditarSubs(ctx, eq, { dias = 95, hoy = hoyIso() } = {}) {
+  const subs = ctx.recurrentes.filter((r) => r.tipo === 'suscripcion' && r.estado !== 'pausado');
+  const porRec = new Map();
+  for (const g of ctx.gastos) {
+    const rid = ctx.match.get(g.id);
+    if (!rid || diasEntre(g.fecha, hoy) > dias || g.fecha > hoy) continue;
+    if (!porRec.has(rid)) porRec.set(rid, []);
+    porRec.get(rid).push(g);
+  }
+
+  return subs.map((r) => {
+    const vistos = (porRec.get(r.id) || []).sort((a, b) => b.fecha.localeCompare(a.fecha));
+    const declarado = Number(r.monto) || 0;
+    if (!vistos.length) return { r, estado: 'fantasma', declarado, real: 0, vistos, ultima: null };
+
+    // Se compara contra el último mes cobrado completo: una suscripción puede
+    // cobrar dos veces en el mismo mes (prorrateos de Apple, por ejemplo) y
+    // mirar un solo cargo la haría parecer más barata de lo que es.
+    const ultimoMes = vistos[0].fecha.slice(0, 7);
+    const delMes = vistos.filter((g) => g.fecha.slice(0, 7) === ultimoMes);
+    const real = delMes.reduce((a, g) => a + Number(g.monto), 0);
+    const mismaMoneda = (delMes[0].moneda || 'ARS') === r.moneda;
+    const desvio = declarado ? Math.abs(real - declarado) / declarado : 1;
+    const estado = (!mismaMoneda || desvio > 0.15) ? 'desviada' : 'ok';
+    return {
+      r, estado, declarado, real, vistos, ultima: vistos[0].fecha,
+      moneda: delMes[0].moneda || 'ARS', mismaMoneda, mes: ultimoMes,
+    };
+  }).sort((a, b) => {
+    // Primero lo accionable: lo que está mal declarado, después lo que parece
+    // dado de baja, y al final lo que ya está bien.
+    const orden = { desviada: 0, fantasma: 1, ok: 2 };
+    return (orden[a.estado] - orden[b.estado])
+      || eq({ ars: b.moneda === 'USD' ? 0 : b.real, usd: b.moneda === 'USD' ? b.real : 0 })
+       - eq({ ars: a.moneda === 'USD' ? 0 : a.real, usd: a.moneda === 'USD' ? a.real : 0 });
+  });
+}
+
+/** Costo mensual de todas las suscripciones activas, separado por moneda. */
+export function costoSubs(ctx, mes = MES_HOY) {
+  const total = cero();
+  for (const r of ctx.recurrentes) {
+    if (r.tipo !== 'suscripcion' || !vigenteEn(r, mes, ctx)) continue;
+    sumar(total, montoEn(r, mes, ctx), r.moneda);
+  }
+  return total;
+}
+
+/**
+ * Cuánto tarda un objetivo en cumplirse al ritmo de ahorro proyectado.
+ * Devuelve el mes en que se completa, o null si con esta curva no llega.
+ */
+export function etaObjetivo(faltante, curva) {
+  if (faltante <= 0) return { mes: null, cumplido: true };
+  let acum = 0;
+  for (const f of curva.filas) {
+    if (f.ahorro <= 0) continue;
+    acum += f.ahorro;
+    if (acum >= faltante) return { mes: f.mes, cumplido: false };
+  }
+  return { mes: null, cumplido: false };
 }

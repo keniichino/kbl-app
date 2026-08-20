@@ -6,15 +6,23 @@ import { clasificar } from './catalogo.js';
 import { mediosCredito } from './medios-credito.js';
 import { reconocerTicket } from './ticket-ocr.js';
 import { parsearTicket } from './ticket-parser.js';
+import { parsearResumen, marcarDuplicados, EMOJI_CAT } from './import-resumen.js';
 
+// `educacion` e `impuestos` salieron de mirar los datos reales, no de una
+// lista teórica: la facultad ($828.348 entre UADE y la cuota de agosto) estaba
+// repartida entre "servicios" y "otros", que son justo los dos rubros que no
+// se pueden recortar ni interpretar. Con la facultad adentro, "servicios"
+// parecía un gasto fijo enorme y "otros" un pozo sin fondo de $1,5 M.
 export const CATEGORIAS = [
   { key: 'comida',     emoji: '🍔', label: 'Comida' },
   { key: 'super',      emoji: '🛒', label: 'Súper' },
   { key: 'transporte', emoji: '🚗', label: 'Transporte' },
   { key: 'salidas',    emoji: '🎉', label: 'Salidas' },
   { key: 'servicios',  emoji: '🔁', label: 'Servicios' },
+  { key: 'educacion',  emoji: '🎓', label: 'Educación' },
   { key: 'casa',       emoji: '🏠', label: 'Casa' },
   { key: 'salud',      emoji: '💊', label: 'Salud' },
+  { key: 'impuestos',  emoji: '🧾', label: 'Impuestos' },
   { key: 'otros',      emoji: '📦', label: 'Otros' },
 ];
 
@@ -60,8 +68,59 @@ function etiquetaDia(fechaIso) {
   return f.toLocaleDateString('es-AR', { day: 'numeric', month: 'short' });
 }
 
+/**
+ * El aviso de "hace días que no cargás".
+ *
+ * No es una racha ni un premio: es la única forma honesta de invitar a volver
+ * a una app de gastos. Si hace una semana que no cargás nada, los números que
+ * te muestra la app son mentira, y decírtelo es más útil que felicitarte.
+ *
+ * Se mide por `ts` (cuándo lo cargaste), no por `fecha` (cuándo lo gastaste):
+ * importar un resumen viejo cuenta como actividad, que es justamente lo que
+ * queremos que hagas.
+ */
+function avisoDeCarga(gastos) {
+  const el = $('#gasto-aviso');
+  if (!el) return;
+  if (!gastos.length) {
+    el.hidden = false;
+    el.innerHTML = `<b>Todavía no hay nada cargado.</b>
+      Pegá el resumen del banco en <b>Importar resumen</b> y arrancás con un mes entero de una.`;
+    return;
+  }
+
+  // Se avisa cuando CERRÓ un resumen y desde ese cierre no cargaste nada, que
+  // es cuando de verdad hay algo nuevo para importar: una vez por tarjeta y
+  // por mes. Contar "días desde la última carga" estaba mal — con un hábito
+  // mensual, un umbral de 3 días aparece 27 de cada 30 días y se vuelve
+  // exactamente el ruido que se aprende a ignorar.
+  const ultimoTs = Math.max(...gastos.map((g) => g.ts || 0));
+  const hoy = new Date();
+
+  const pendientes = mediosCredito()
+    .filter((m) => m.diaCierre != null)
+    .map((m) => {
+      // Último cierre que ya pasó: este mes si el día ya quedó atrás, si no el anterior.
+      const cierre = new Date(hoy.getFullYear(), hoy.getMonth(), m.diaCierre);
+      if (cierre > hoy) cierre.setMonth(cierre.getMonth() - 1);
+      return { medio: m, cierre };
+    })
+    .filter(({ cierre }) => ultimoTs < cierre.getTime())
+    .sort((a, b) => b.cierre - a.cierre);
+
+  if (!pendientes.length) { el.hidden = true; return; }
+
+  const { medio, cierre } = pendientes[0];
+  const dias = Math.floor((hoy - cierre) / 86400000);
+  const nombre = `${medio.banco || ''} ${medio.nombre}`.trim();
+  el.hidden = false;
+  el.innerHTML = `<b>Cerró el resumen de ${nombre}</b> hace ${dias === 0 ? 'horas' : dias + (dias === 1 ? ' día' : ' días')}
+    y todavía no cargaste nada. Pegalo en <b>Importar resumen</b> y se pone al día solo.`;
+}
+
 function render() {
   const gastos = getGastos();
+  avisoDeCarga(gastos);
   const { y, m } = mesActual();
   const delMes = gastos.filter((g) => {
     const f = new Date(g.fecha + 'T00:00:00');
@@ -203,7 +262,111 @@ function agregar() {
   document.dispatchEvent(new CustomEvent('kbl:gasto-agregado'));
 }
 
+// ---------- Importar resumen ----------
+// Lo pesado (parsear, deduplicar) vive en `import-resumen.js`; acá sólo está
+// la pantalla. Nada se guarda hasta que se ve la previsualización: un import
+// que escribe primero y muestra después es un import en el que no podés
+// confiar, y este toca la tabla más grande de la app.
+
+let impLeidos = [];
+
+function pintarPreview() {
+  const cont = $('#imp-preview');
+  if (!impLeidos.length) { cont.innerHTML = ''; return; }
+
+  const nuevos = impLeidos.filter((m) => m.tipo === 'gasto' && !m.duplicado);
+  const repes = impLeidos.filter((m) => m.tipo === 'gasto' && m.duplicado);
+  const cuotas = impLeidos.filter((m) => m.tipo === 'cuota');
+  const ajustes = impLeidos.filter((m) => m.tipo === 'ajuste');
+
+  cont.innerHTML = `
+    <div class="imp-resumen">
+      <b>${nuevos.length}</b> para cargar
+      ${repes.length ? ` · <span class="fin-soft">${repes.length} ya estaban</span>` : ''}
+      ${cuotas.length ? ` · <span class="fin-soft">${cuotas.length} en cuotas</span>` : ''}
+      ${ajustes.length ? ` · <span class="fin-soft">${ajustes.length} ajustes</span>` : ''}
+    </div>
+    ${nuevos.length ? `
+      <div class="imp-lista">
+        ${nuevos.map((m, i) => `
+          <label class="imp-fila">
+            <input type="checkbox" data-i="${impLeidos.indexOf(m)}" ${m.excluir ? '' : 'checked'}>
+            <span class="imp-cat">${EMOJI_CAT[m.categoria] || '📦'}</span>
+            <span class="imp-desc">${escaparTxt(m.descripcion)}<small>${m.fecha.slice(8)}/${m.fecha.slice(5, 7)}</small></span>
+            <span class="imp-monto">${fmt(m.monto, m.moneda)}</span>
+          </label>`).join('')}
+      </div>
+      <button class="fin-btn fin-btn--ok imp-confirmar" id="imp-confirmar">
+        Cargar ${nuevos.filter((m) => !m.excluir).length}
+      </button>` : `
+      <div class="fin-nota fin-nota--ok">✓ No hay nada nuevo: todo lo que pegaste ya estaba cargado.</div>`}
+    ${cuotas.length ? `
+      <div class="fin-nota">Los planes en cuotas no se cargan como gasto — la app los lleva
+        aparte en Cuotas, para no cobrarte dos veces la misma compra.
+        ${cuotas.map((c) => escaparTxt(c.descripcion) + ' (' + c.cuota.actual + '/' + c.cuota.total + ')').join(', ')}.</div>` : ''}
+    ${ajustes.length ? `
+      <div class="fin-nota">Devoluciones y percepciones detectadas, no se cargan como consumo:
+        ${ajustes.map((a) => escaparTxt(a.descripcion)).join(', ')}.</div>` : ''}`;
+}
+
+const escaparTxt = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+function leerImport() {
+  const texto = $('#imp-texto').value;
+  const { movimientos, descartados, tarjeta } = parsearResumen(texto);
+  impLeidos = marcarDuplicados(movimientos, getGastos());
+  const est = $('#imp-estado');
+  est.textContent = movimientos.length
+    ? `${movimientos.length} movimientos · ${tarjeta ? 'tarjeta ' + tarjeta : 'sin tarjeta detectada'}`
+    : (descartados.length ? 'No reconocí ningún movimiento' : 'Pegá el listado primero');
+  est.className = 'imp-estado' + (movimientos.length ? '' : ' fin-mal');
+  pintarPreview();
+}
+
+function confirmarImport() {
+  const aCargar = impLeidos.filter((m) => m.tipo === 'gasto' && !m.duplicado && !m.excluir);
+  if (!aCargar.length) return;
+  for (const m of aCargar) {
+    addGasto({
+      id: crypto.randomUUID(),
+      monto: m.monto,
+      descripcion: m.descripcion,
+      categoria: m.categoria,
+      tarjeta: m.tarjeta,
+      moneda: m.moneda,
+      fecha: m.fecha,
+      ts: Date.now(),
+    });
+  }
+  impLeidos = [];
+  $('#imp-texto').value = '';
+  $('#imp-estado').textContent = `✓ ${aCargar.length} cargados`;
+  $('#imp-preview').innerHTML = '';
+  $('#imp').open = false;
+  render();
+}
+
+function initImport() {
+  const caja = $('#imp');
+  if (!caja) return;
+  caja.addEventListener('click', (e) => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    if (b.id === 'imp-leer') { e.preventDefault(); leerImport(); }
+    if (b.id === 'imp-confirmar') { e.preventDefault(); confirmarImport(); }
+  });
+  caja.addEventListener('change', (e) => {
+    const chk = e.target.closest('input[type=checkbox]');
+    if (!chk) return;
+    const mv = impLeidos[Number(chk.dataset.i)];
+    if (mv) mv.excluir = !chk.checked;
+    const btn = $('#imp-confirmar');
+    if (btn) btn.textContent = `Cargar ${impLeidos.filter((m) => m.tipo === 'gasto' && !m.duplicado && !m.excluir).length}`;
+  });
+}
+
 export function initGastos() {
+  initImport();
   // La cotización llega asincrónica (y puede cambiar de casa): repintamos.
   onCotizacion(() => { if (!$('#gasto-total-usd')?.hidden) render(); });
   $('#gasto-total-usd').addEventListener('click', (e) => {

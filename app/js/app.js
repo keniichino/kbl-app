@@ -8,6 +8,7 @@ import { initBosqueVuelo } from './bosque-vuelo.js';
 import { initNotas, renderNotas } from './notas.js';
 import { initCuotas, renderCuotas } from './cuotas.js';
 import { initPanel, renderPanel } from './panel.js';
+import { initAhorro, renderAhorro } from './ahorro.js';
 import { initCotizacion } from './cotizacion.js';
 import { initAjustes } from './ajustes.js';
 import { confirmar } from './dialog.js';
@@ -198,6 +199,7 @@ onRuta((r) => {
   if (vista === 'bosque') renderBosque();
   if (vista === 'gastos') renderGastos();
   if (vista === 'cuotas') renderCuotas();
+  if (vista === 'ahorro') renderAhorro();
   if (vista === 'panel') { renderPanel(); plegarPanel(); }
   if (vista === 'notas') renderNotas();
 });
@@ -476,6 +478,11 @@ function onRemoteChange(kind) {
       document.querySelector('#view-panel').classList.contains('active')) {
     renderPanel();
   }
+  // Ahorro proyecta con los mismos insumos que el panel, más los objetivos.
+  if ((todo || ['gastos', 'cuotas', 'recurrentes', 'ahorros', 'objetivos'].includes(kind)) &&
+      document.querySelector('#view-ahorro').classList.contains('active')) {
+    renderAhorro();
+  }
 }
 
 // ---------- Arranque: retomar sesión si existía ----------
@@ -493,6 +500,7 @@ async function arrancarApp() {
   initGastos();
   initNotas();
   initCuotas();
+  initAhorro();
   initPanel();
   initCotizacion(); // después de los módulos: al llegar la cotización los repinta
   initIslas();

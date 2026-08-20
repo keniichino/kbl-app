@@ -22,7 +22,9 @@ const PLEGABLES = [
   ['fin-fijos',       '🏠 Gastos fijos'],
   ['fin-subs',        '🔁 Suscripciones'],
   ['fin-deuda',       '💳 Deuda en cuotas'],
-  ['fin-ahorro',      '🐷 Ahorro'],
+  // `fin-ahorro` NO se pliega: dejó de ser contenido y pasó a ser la puerta a
+  // la pantalla de Ahorro. Un link escondido dentro de un <details> cerrado no
+  // lo encuentra nadie.
   ['fin-reintegros',  '🙋 Te deben'],
   ['fin-inversiones', '📈 Inversiones'],
   ['fin-tesis',       '🧭 Tesis'],

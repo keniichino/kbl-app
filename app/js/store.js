@@ -14,6 +14,7 @@ const KEYS = {
   cuotas: 'kbl.cuotas',
   recurrentes: 'kbl.recurrentes',
   ahorros: 'kbl.ahorros',
+  objetivos: 'kbl.objetivos',
   inversiones: 'kbl.inversiones',
   medios: 'kbl.medios_pago',
   pagosResumen: 'kbl.pagos_resumen',
@@ -31,7 +32,8 @@ let currentUid = null; // user autenticado; el server igual valida vía RLS
 // en el mismo dispositivo, para no mezclar datos de dos usuarios).
 export function clearLocalData() {
   [KEYS.sessions, KEYS.active, KEYS.gastos, KEYS.notas, KEYS.cuotas,
-   KEYS.recurrentes, KEYS.ahorros, KEYS.inversiones, KEYS.medios, KEYS.pagosResumen, KEYS.lastPull].forEach(
+   KEYS.recurrentes, KEYS.ahorros, KEYS.objetivos, KEYS.inversiones, KEYS.medios,
+   KEYS.pagosResumen, KEYS.lastPull].forEach(
     (k) => localStorage.removeItem(k)
   );
 }
@@ -157,9 +159,10 @@ export async function initSync(onRemoteChange) {
       supabase.from('medios_pago').select('*'),
       supabase.from('inversiones').select('*'),
       supabase.from('pagos_resumen').select('*'),
+      supabase.from('objetivos').select('*'),
     ]);
     const timeout = new Promise((_, rej) => setTimeout(rej, 3500, 'timeout'));
-    const [sess, act, gastosR, notasR, cuotasR, recuR, ahoR, medR, invR, pagR] = await Promise.race([pull, timeout]);
+    const [sess, act, gastosR, notasR, cuotasR, recuR, ahoR, medR, invR, pagR, objR] = await Promise.race([pull, timeout]);
     if (sess.data) write(KEYS.sessions, sess.data.map(fromRemote));
     if (!act.error) {
       const local = getActive();
@@ -176,6 +179,11 @@ export async function initSync(onRemoteChange) {
     if (recuR.data) mergeListPull('recurrentes', KEYS.recurrentes, recuR.data, fromRemoteRecurrente, toRemoteRecurrente,
       (local, remote) => local.updated > Date.parse(remote.updated_at));
     if (ahoR.data) mergeListPull('ahorros', KEYS.ahorros, ahoR.data, fromRemoteAhorro, toRemoteAhorro);
+    // `objetivos` es nueva, igual que `inversiones` en su momento: si todavía
+    // no corriste el SQL esto viene con error y la app sigue andando con el
+    // módulo vacío, en vez de romper el pull de todo lo demás.
+    if (objR?.data) mergeListPull('objetivos', KEYS.objetivos, objR.data, fromRemoteObjetivo, toRemoteObjetivo,
+      (local, remote) => local.updated > Date.parse(remote.updated_at));
     // Medios de pago: se editan (cargás el día de cierre real), last-write-wins por `updated`.
     if (medR.data) mergeListPull('medios_pago', KEYS.medios, medR.data, fromRemoteMedio, toRemoteMedio,
       (local, remote) => local.updated > Date.parse(remote.updated_at));
@@ -240,6 +248,7 @@ export async function initSync(onRemoteChange) {
   suscribirLista('medios_pago', KEYS.medios, fromRemoteMedio, 'medios_pago');
   suscribirLista('inversiones', KEYS.inversiones, fromRemoteInversion, 'inversiones');
   suscribirLista('pagos_resumen', KEYS.pagosResumen, fromRemotePago, 'pagos_resumen');
+  suscribirLista('objetivos', KEYS.objetivos, fromRemoteObjetivo, 'objetivos');
 }
 
 // --- Gastos: [{ id, monto, descripcion, categoria, fecha, ts }] ---
@@ -257,6 +266,10 @@ const toRemoteGasto = (g) => ({
   // null = gasto propio. 'pendiente'/'cobrado' = lo pagaste por otro.
   reintegro: g.reintegro || null,
   reintegro_de: g.reintegro_de || null,
+  // De dónde salió el gasto. Los que llegan solos (mail -> n8n) traen el
+  // Message-ID en origen_id, que es lo que evita cargarlos dos veces.
+  origen: g.origen || null,
+  origen_id: g.origenId || null,
   created_at: new Date(g.ts).toISOString(),
 });
 const fromRemoteGasto = (r) => ({
@@ -269,6 +282,8 @@ const fromRemoteGasto = (r) => ({
   fecha: r.fecha,
   reintegro: r.reintegro || null,
   reintegro_de: r.reintegro_de || '',
+  origen: r.origen || null,
+  origenId: r.origen_id || null,
   ts: Date.parse(r.created_at),
 });
 
@@ -520,6 +535,7 @@ const toRemoteAhorro = (a) => ({
   moneda: a.moneda || 'ARS',
   tipo: a.tipo || 'aporte',
   destino: a.destino || null,
+  objetivo_id: a.objetivoId || null,
   nota: a.nota || null,
   created_at: new Date(a.ts).toISOString(),
 });
@@ -530,6 +546,7 @@ const fromRemoteAhorro = (r) => ({
   moneda: r.moneda || 'ARS',
   tipo: r.tipo || 'aporte',
   destino: r.destino || '',
+  objetivoId: r.objetivo_id || null,
   nota: r.nota || '',
   ts: Date.parse(r.created_at),
 });
@@ -549,6 +566,54 @@ export function addAhorro(mov) {
 export function removeAhorro(id) {
   write(KEYS.ahorros, getAhorros().filter((a) => a.id !== id));
   push(supabase.from('ahorros').delete().eq('id', id), 'ahorros delete');
+}
+
+// --- Objetivos: metas de ahorro ---
+// El progreso NO se guarda acá: se calcula sumando los `ahorros` que apuntan
+// a este objetivo. Un objetivo no puede decir "80% cumplido" sin plata real
+// detrás — que es exactamente el error que hace inútil a una app de metas.
+
+const toRemoteObjetivo = (o) => ({
+  id: o.id,
+  nombre: o.nombre,
+  monto_objetivo: o.monto,
+  moneda: o.moneda || 'ARS',
+  fecha_objetivo: o.fecha || null,
+  prioridad: o.prioridad ?? 2,
+  estado: o.estado || 'activo',
+  nota: o.nota || null,
+  updated_at: new Date(o.updated || Date.now()).toISOString(),
+});
+const fromRemoteObjetivo = (r) => ({
+  id: r.id,
+  nombre: r.nombre,
+  monto: Number(r.monto_objetivo),
+  moneda: r.moneda || 'ARS',
+  fecha: r.fecha_objetivo || '',
+  prioridad: r.prioridad ?? 2,
+  estado: r.estado || 'activo',
+  nota: r.nota || '',
+  updated: Date.parse(r.updated_at || r.created_at),
+});
+
+export function getObjetivos() {
+  return read(KEYS.objetivos, []);
+}
+
+export function upsertObjetivo(obj) {
+  const all = getObjetivos().filter((o) => o.id !== obj.id);
+  all.push(obj);
+  write(KEYS.objetivos, all);
+  push(supabase.from('objetivos').upsert(toRemoteObjetivo(obj), { onConflict: 'id' }), 'objetivos upsert');
+  return obj;
+}
+
+export function removeObjetivo(id) {
+  write(KEYS.objetivos, getObjetivos().filter((o) => o.id !== id));
+  // Los aportes NO se borran: la FK es ON DELETE SET NULL, así que la plata
+  // queda como ahorro general en vez de desaparecer con la meta.
+  write(KEYS.ahorros, getAhorros().map((a) => (a.objetivoId === id ? { ...a, objetivoId: null } : a)));
+  push(supabase.from('objetivos').delete().eq('id', id), 'objetivos delete');
 }
 
 // --- Inversiones: operaciones, no saldo ---

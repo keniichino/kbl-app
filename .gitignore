@@ -40,3 +40,8 @@ RETOMAR-ACA.md
 # Salida de los parsers de resumen: son TUS consumos reales (comercio, fecha,
 # importe). El repo es publico. Los .js que los generan si se versionan.
 tools/resumenes/*.json
+
+# Scripts de carga con movimientos REALES (comercios e importes). El repo es
+# público: el esquema puede subir, los datos no. Ver la fuga de
+# tools/resumenes/*.json del 10/08.
+supabase/gastos-2026-*.sql

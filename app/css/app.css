@@ -12,10 +12,21 @@
      cielo con gradiente: el fondo real cambia según la hora y la posición.
      Por eso va más oscuro que un gris "de diseño" — tiene que aguantar el
      peor fondo posible, no el del mockup. */
-  --ink-soft: #3d5b4a;
+  /* Medido contra la franja MÁS OSCURA del cielo (#8fb4e6, la de arriba, que
+     es donde caen los subtítulos y los chips): #3d5b4a daba 3,2:1 ahí. */
+  --ink-soft: #2d4336;
   --card: rgba(255, 255, 255, 0.72);
   --accent: #ff8a5c;
   --accent-deep: #f26d3d;
+  /* SUPERFICIE vs TEXTO — la distinción que faltaba y que hacía que la app
+     se viera despareja. `--accent`/`--accent-deep` son colores de MARCA: se
+     pintan de fondo. Escribir con ellos sobre algo claro da 2,2–2,8:1.
+     `--accent-txt` es el mismo naranja bajado al mínimo que pasa AA sobre
+     tarjeta. Sobre el cielo pelado ni eso alcanza (haría falta #7d2708, que
+     ya no se lee como el naranja de la app): ahí el elemento lleva
+     superficie propia. Mismo criterio para --fin-cuota en texto chico. */
+  --accent-txt: #c73d0c;
+  --accent-fondo: linear-gradient(160deg, #c2410c, #9a3412);
   /* Medidos contra el peor extremo del gradiente del tabbar (blanco al 35%
      sobre el cielo), que es donde menos contraste hay: 5,0:1 y 4,7:1. */
   --tab-off: #3a5645;
@@ -241,7 +252,7 @@ body[data-phase="noche"] .tabbar { background: linear-gradient(150deg, rgba(255,
 .btn-primary {
   font: 800 1.15rem var(--font);
   color: #fff;
-  background: linear-gradient(135deg, var(--accent), var(--accent-deep));
+  background: var(--accent-fondo);
   border: none;
   border-radius: 20px;
   padding: 16px 40px;
@@ -528,13 +539,17 @@ body[data-theme="dark"] .seg-btn.selected {
   padding: max(14px, env(safe-area-inset-top)) 18px 8px;
   background: var(--sky);
 }
+/* Va sobre el cielo pelado, donde ningún naranja legible sigue pareciendo el
+   naranja de la app (haría falta #7d2708). Se resuelve dándole superficie
+   propia en vez de oscurecer el color hasta desnaturalizarlo. */
 .editor-volver {
   border: none;
-  background: none;
+  background: var(--fin-surf);
   font: 700 1.05rem var(--font);
-  color: var(--accent-deep);
+  color: var(--accent-txt);
   cursor: pointer;
-  padding: 8px 8px 8px 0;
+  padding: 8px 14px 8px 11px;
+  border-radius: 999px;
 }
 .editor-borrar {
   border: none;
@@ -744,7 +759,7 @@ body[data-theme="dark"] .resumen-ahorro { color: #6ee7b7; }
 }
 .gasto-item {
   display: flex; align-items: center; gap: 10px;
-  background: rgba(255,255,255,.5);
+  background: rgba(255,255,255,.88);   /* .5 dejaba pasar el cielo y el monto en USD caía a 3,5:1 */
   border: 1px solid rgba(255,255,255,.65);
   border-radius: 16px;
   padding: 10px 12px;
@@ -970,7 +985,7 @@ body[data-theme="dark"] .resumen-ahorro { color: #6ee7b7; }
 /* ====== Cuotas ====== */
 .cuotas-proy-wrap {
   margin: 12px 0 8px;
-  background: rgba(255,255,255,.55);
+  background: rgba(255,255,255,.88);
   border-radius: 16px;
   padding: 14px 16px 10px;
 }
@@ -992,7 +1007,7 @@ body[data-theme="dark"] .resumen-ahorro { color: #6ee7b7; }
 }
 .proy-row:last-child { border-bottom: none; }
 .proy-row--next .proy-mes { font-weight: 700; color: var(--ink); }
-.proy-row--next .proy-monto { font-weight: 700; color: var(--accent-deep); }
+.proy-row--next .proy-monto { font-weight: 700; color: var(--accent-txt); }
 .proy-mes { font-size: .8rem; color: var(--ink-soft); text-transform: capitalize; }
 .proy-barra-wrap { height: 5px; background: rgba(0,0,0,.08); border-radius: 3px; overflow: hidden; }
 .proy-barra { height: 100%; background: var(--grass); border-radius: 3px; transition: width .4s ease; }
@@ -1001,7 +1016,7 @@ body[data-theme="dark"] .resumen-ahorro { color: #6ee7b7; }
 /* Próximo resumen por tarjeta */
 .cuotas-resumen-wrap {
   margin: 0 0 8px;
-  background: rgba(255,255,255,.55);
+  background: rgba(255,255,255,.88);
   border-radius: 16px;
   padding: 14px 16px 12px;
 }
@@ -1052,7 +1067,7 @@ body[data-theme="dark"] .resumen-ahorro { color: #6ee7b7; }
 /* Form agregar cuota */
 .cuota-form-wrap {
   margin: 10px 0 6px;
-  background: rgba(255,255,255,.55);
+  background: rgba(255,255,255,.88);
   border-radius: 16px;
   overflow: hidden;
 }
@@ -1169,6 +1184,10 @@ body[data-theme="dark"] {
   --grass-deep: #10b981;
   --accent: #f59e0b;
   --accent-deep: #60a5fa;
+  /* En oscuro el acento ya es un azul claro que contrasta solo: el token de
+     texto existe igual para que las reglas no tengan que ramificar por tema. */
+  --accent-txt: #8cc0ff;
+  --accent-fondo: linear-gradient(160deg, #1e40af, #1e3a8a);
   --tab-off: #8494a8;
   --tab-on: #8cc0ff;
   --tab-on-bg: rgba(96, 165, 250, .16);
@@ -1389,6 +1408,11 @@ body[data-theme="dark"] .btn-logout {
   --fin-ahorro: #12867c;
   --fin-ok:     #14784f;
   --fin-mal:    #b23c09;
+  /* El dorado de cuotas en texto de 9px daba 2,8:1. Esta es la versión
+     legible; el original se sigue usando para barras y fondos. */
+  --fin-cuota-txt: #a06224;
+  /* El verde azulado en un badge de 9px sobre su propio tinte daba 3,4:1. */
+  --fin-ahorro-txt: #0f7068;
   /* .72 dejaba pasar el cielo y el texto chico perdía contraste según qué
      franja del gradiente quedara atrás. .88 mantiene el vidrio pero fija un
      piso de legibilidad que no depende de la hora del día. */
@@ -1408,6 +1432,10 @@ body[data-theme="dark"] {
   --fin-surf:   rgba(255,255,255,.07);
   --fin-borde:  rgba(255,255,255,.12);
   --fin-rule:   rgba(255,255,255,.10);
+  /* En oscuro el problema se da vuelta: el color tiene que ACLARARSE para
+     despegarse del fondo, no oscurecerse. El dorado ya viene claro. */
+  --fin-cuota-txt: #fbbf24;
+  --fin-ahorro-txt: #2dd4bf;
 }
 
 #view-panel { padding-bottom: 8px; }
@@ -1480,7 +1508,7 @@ body[data-theme="dark"] .fin-form-wrap { box-shadow: none; }
 .fin-card-sub { font-size: .72rem; color: var(--ink-soft); font-weight: 600; }
 .fin-link {
   background: none; border: none; cursor: pointer; padding: 0;
-  font: 700 .74rem var(--font); color: var(--accent-deep);
+  font: 700 .74rem var(--font); color: var(--accent-txt);
 }
 
 /* ---- Hero: qué entra, qué sale y qué queda ---- */
@@ -1651,8 +1679,8 @@ body[data-theme="dark"] .fin-alloc { background: rgba(255,255,255,.06); }
   text-transform: uppercase; padding: 1px 5px; border-radius: 5px;
   background: var(--fin-rule); color: var(--ink-soft);
 }
-.fin-badge--usd { color: var(--fin-ahorro); background: color-mix(in srgb, var(--fin-ahorro) 14%, transparent); }
-.fin-badge--pausa { color: var(--fin-cuota); background: color-mix(in srgb, var(--fin-cuota) 14%, transparent); }
+.fin-badge--usd { color: var(--fin-ahorro-txt); background: color-mix(in srgb, var(--fin-ahorro) 14%, transparent); }
+.fin-badge--pausa { color: var(--fin-cuota-txt); background: color-mix(in srgb, var(--fin-cuota) 14%, transparent); }
 
 .fin-fila-detalle { padding: 2px 0 12px; }
 .fin-hist { display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; margin-bottom: 10px; }
@@ -2269,7 +2297,7 @@ body[data-theme="dark"] .fin-ritmo { box-shadow: none; }
 
 .fin-badge--tarjeta {
   background: color-mix(in srgb, var(--fin-cuota) 18%, transparent);
-  color: var(--fin-cuota);
+  color: var(--fin-cuota-txt);
 }
 .fin-badge--clase {
   background: var(--fin-rule); color: var(--ink-soft);
@@ -2424,7 +2452,9 @@ body[data-theme="dark"] .fin-ritmo { box-shadow: none; }
   flex-shrink: 0;
   border: none; cursor: pointer;
   padding: 7px 13px; border-radius: 999px;
-  background: var(--accent); color: #fff;
+  /* Blanco sobre --accent (#ff8a5c) daba 2,3:1. El gradiente oscuro es el
+     mismo que ya usaba el botón flotante, que sí pasaba: ahora es un token. */
+  background: var(--accent-fondo); color: #fff;
   font: 800 .74rem var(--font);
   box-shadow: 0 2px 8px rgba(242,109,61,.28);
 }
@@ -3006,3 +3036,168 @@ body[data-theme="dark"] .fin-pleg-sum { color: #fff; }
 @media (min-width: 1024px) {
   .fin-pleg { margin: 0 0 10px; }
 }
+
+/* ============ Módulo Ahorro ============ */
+/* Reusa fin-card / fin-duo / fin-nota del Panel: es la misma familia visual,
+   sólo cambian las piezas que el Panel no tiene (curva, objetivos, rubros). */
+
+.ah-graf { width: 100%; height: 120px; display: block; margin: 4px 0 2px; color: var(--ink-soft); }
+
+.ah-leyenda {
+  display: flex; gap: 14px; justify-content: center;
+  font-size: .68rem; color: var(--ink-soft); font-weight: 600; margin-bottom: 10px;
+}
+.ah-leyenda span { display: inline-flex; align-items: center; gap: 5px; }
+.ah-chip { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+.ah-chip--barra { background: var(--fin-ok); opacity: .55; }
+.ah-chip--linea { background: var(--fin-ahorro); height: 3px; border-radius: 2px; }
+
+.fin-nota--alerta {
+  background: color-mix(in srgb, var(--fin-mal) 10%, transparent);
+  border-left: 3px solid var(--fin-mal);
+  padding: 8px 10px; border-radius: 0 6px 6px 0; margin-top: 10px;
+}
+.fin-nota--ok {
+  background: color-mix(in srgb, var(--fin-ok) 10%, transparent);
+  border-left: 3px solid var(--fin-ok);
+  padding: 8px 10px; border-radius: 0 6px 6px 0; margin-top: 10px;
+}
+
+/* ---- Tabla mes a mes ---- */
+.ah-tabla { margin-top: 12px; }
+.ah-fila {
+  display: grid; grid-template-columns: 1.1fr 1fr .8fr 1fr 1fr;
+  gap: 6px; align-items: center; padding: 6px 0;
+  border-bottom: 1px solid var(--fin-rule); font-size: .74rem; font-weight: 700;
+}
+.ah-fila:last-child { border-bottom: none; }
+.ah-fila span:not(:first-child) { text-align: right; }
+.ah-fila--head {
+  font-size: .64rem; font-weight: 700; color: var(--ink-soft);
+  text-transform: uppercase; letter-spacing: .04em; border-bottom-width: 2px;
+}
+.ah-mes { text-transform: capitalize; color: var(--ink-soft); font-weight: 600; }
+.ah-mes small { opacity: .6; margin-left: 2px; font-size: .85em; }
+
+/* ---- Objetivos ---- */
+.ah-obj { padding: 10px 0; border-bottom: 1px solid var(--fin-rule); }
+.ah-obj:last-child { border-bottom: none; }
+.ah-obj--listo .fin-meta-fill { background: var(--fin-ok); }
+.ah-obj-head {
+  display: flex; justify-content: space-between; align-items: baseline;
+  gap: 8px; margin-bottom: 6px;
+}
+.ah-obj-nombre { font-size: .86rem; font-weight: 800; }
+/* Los puntos de prioridad: 3 = alta, 1 = baja. Se leen de un vistazo sin leyenda. */
+.ah-obj-prio { color: var(--fin-cuota-txt); font-size: .7em; letter-spacing: -1px; margin-right: 3px; }
+.ah-obj-monto { font-size: .8rem; font-weight: 800; color: var(--ink); white-space: nowrap; }
+.ah-obj-monto small { font-weight: 600; color: var(--ink-soft); }
+.ah-obj-pie {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+  margin-top: 6px; font-size: .72rem; font-weight: 600;
+}
+.ah-obj-acciones { margin-left: auto; display: flex; gap: 6px; }
+
+/* ---- Form de alta ---- */
+.ah-form { display: grid; gap: 8px; padding: 10px 0 12px; border-bottom: 1px solid var(--fin-rule); }
+.ah-form-fila { display: flex; gap: 8px; align-items: center; }
+.ah-in {
+  flex: 1; min-width: 0; padding: 9px 10px; font: inherit; font-size: .84rem;
+  border: 1px solid var(--fin-borde); border-radius: 9px;
+  background: var(--fin-surf); color: var(--ink);
+}
+.ah-in--monto { flex: 2; }
+.ah-radio { position: relative; }
+.ah-radio input { position: absolute; opacity: 0; pointer-events: none; }
+.ah-radio span {
+  display: block; padding: 9px 13px; font-size: .82rem; font-weight: 800;
+  border: 1px solid var(--fin-borde); border-radius: 9px; cursor: pointer;
+  color: var(--ink-soft); background: var(--fin-surf);
+}
+.ah-radio input:checked + span {
+  background: var(--fin-fijo); border-color: transparent; color: #fff;
+}
+.ah-form-btns { display: flex; gap: 8px; justify-content: flex-end; }
+
+/* ---- Suscripciones y rubros ---- */
+.ah-subs, .ah-cats { margin-top: 12px; }
+.ah-subs-titulo {
+  font-size: .68rem; font-weight: 800; color: var(--ink-soft);
+  text-transform: uppercase; letter-spacing: .04em; margin-bottom: 6px;
+}
+.ah-subs-titulo small { text-transform: none; letter-spacing: 0; font-weight: 600; opacity: .75; }
+.ah-sub {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 7px 0; border-bottom: 1px solid var(--fin-rule); font-size: .74rem;
+}
+.ah-sub:last-child { border-bottom: none; }
+.ah-sub-nombre { font-weight: 800; }
+.ah-sub-estado { font-weight: 600; flex: 1; min-width: 140px; }
+.ah-sub-monto { font-weight: 700; color: var(--ink-soft); }
+
+.ah-cat {
+  display: grid; grid-template-columns: 1.2fr 1.4fr auto auto;
+  gap: 8px; align-items: center; padding: 6px 0; font-size: .74rem;
+}
+.ah-cat-nombre { text-transform: capitalize; font-weight: 700; }
+.ah-cat-barra { height: 6px; background: var(--fin-rule); border-radius: 3px; overflow: hidden; }
+.ah-cat-barra i { display: block; height: 100%; background: var(--fin-var); border-radius: 3px; opacity: .8; }
+.ah-cat-monto { font-weight: 800; text-align: right; }
+.ah-cat-pct { font-size: .68rem; text-align: right; min-width: 34px; }
+
+@media (max-width: 380px) {
+  .ah-fila { grid-template-columns: .9fr 1fr 1fr 1fr; font-size: .7rem; }
+  /* En pantallas angostas la columna "Variable" se cae: es la menos accionable. */
+  .ah-fila span:nth-child(3) { display: none; }
+}
+
+/* `display: grid` de .ah-form pisa el atributo `hidden` (más especificidad):
+   sin esto el form de alta queda visible siempre. */
+.ah-form[hidden] { display: none; }
+
+/* Tarjeta que además es un link a otra pantalla (Panel → Ahorro). */
+.fin-card--link { display: block; text-decoration: none; color: inherit; transition: transform .12s ease; }
+.fin-card--link:active { transform: scale(.99); }
+.fin-card--link .fin-card-sub { color: var(--accent-txt); font-weight: 700; }
+
+/* ---- Importar resumen ---- */
+.imp {
+  background: var(--fin-surf); border: 1px solid var(--fin-borde);
+  border-radius: 16px; margin: 0 0 12px; overflow: hidden;
+}
+.imp-summary {
+  cursor: pointer; padding: 12px 14px; font-weight: 800; font-size: .86rem;
+  display: flex; align-items: center; gap: 8px; list-style: none;
+}
+.imp-summary::-webkit-details-marker { display: none; }
+.imp-hint { font-weight: 600; font-size: .72rem; color: var(--ink-soft); margin-left: auto; }
+.imp-cuerpo { padding: 0 14px 14px; }
+.imp-texto {
+  width: 100%; padding: 10px; font: 500 .78rem ui-monospace, SFMono-Regular, Menlo, monospace;
+  border: 1px solid var(--fin-borde); border-radius: 10px;
+  background: var(--card); color: var(--ink); resize: vertical;
+}
+.imp-acciones { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+.imp-estado { font-size: .74rem; font-weight: 700; color: var(--ink-soft); flex: 1; }
+.imp-resumen { font-size: .8rem; font-weight: 700; margin: 12px 0 6px; }
+.imp-lista { max-height: 260px; overflow-y: auto; margin-bottom: 10px; }
+.imp-fila {
+  display: grid; grid-template-columns: auto auto 1fr auto;
+  gap: 8px; align-items: center; padding: 7px 2px;
+  border-bottom: 1px solid var(--fin-rule); font-size: .78rem; cursor: pointer;
+}
+.imp-fila:last-child { border-bottom: none; }
+.imp-desc { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.imp-desc small { font-weight: 600; color: var(--ink-soft); margin-left: 6px; }
+.imp-monto { font-weight: 800; font-variant-numeric: tabular-nums; }
+.imp-confirmar { width: 100%; }
+
+/* Aviso de "hace días que no cargás". Informativo, no alarmante: usa el tono
+   de las notas del panel, no el rojo de un error. */
+.gasto-aviso {
+  background: color-mix(in srgb, var(--fin-cuota) 12%, var(--fin-surf));
+  border: 1px solid color-mix(in srgb, var(--fin-cuota) 28%, transparent);
+  border-radius: 14px; padding: 11px 13px; margin: 0 0 12px;
+  font-size: .8rem; line-height: 1.5; color: var(--ink-soft);
+}
+.gasto-aviso b { color: var(--ink); font-weight: 800; }

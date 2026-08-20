@@ -163,6 +163,25 @@
         <div class="gasto-cats-resumen" id="gasto-cats-resumen"></div>
       </div>
 
+      <!-- Se muestra solo cuando hace días que no cargás: el resto del tiempo
+           no ocupa lugar ni se convierte en ruido que aprendés a ignorar. -->
+      <div class="gasto-aviso" id="gasto-aviso" hidden></div>
+
+      <!-- Importar pegando el resumen. Cargar de a uno es lo que hace que la
+           app se desactualice; esto mete un mes entero de una. -->
+      <details class="imp" id="imp">
+        <summary class="imp-summary">📋 Importar resumen<span class="imp-hint">pegá el listado del banco</span></summary>
+        <div class="imp-cuerpo">
+          <textarea id="imp-texto" class="imp-texto" rows="5" spellcheck="false"
+            placeholder="Copiá el listado de movimientos del homebanking (Galicia o Mercado Pago) y pegalo acá tal cual."></textarea>
+          <div class="imp-acciones">
+            <span class="imp-estado" id="imp-estado"></span>
+            <button class="fin-btn" id="imp-leer">Leer</button>
+          </div>
+          <div id="imp-preview"></div>
+        </div>
+      </details>
+
       <!-- El formulario ya no vive acá: se movió al sheet de abajo, que se abre
            con el botón flotante desde CUALQUIER vista. Es el mismo nodo, así
            que gastos.js sigue enganchando por id sin enterarse. -->
@@ -225,6 +244,18 @@
       </details>
 
       <div id="cuotas-lista"></div>
+    </section>
+
+    <!-- ============ VISTA: AHORRO ============ -->
+    <!-- El Panel mira para atrás ("cómo vengo"); esto mira para adelante
+         ("cuánto me va a sobrar y me alcanza para qué"). -->
+    <section id="view-ahorro" class="view">
+      <header class="view-header">
+        <h1>Ahorro</h1>
+        <p class="view-sub" id="ahorro-sub"></p>
+      </header>
+
+      <div id="ahorro-cont"></div>
     </section>
 
     <!-- ============ VISTA: PANEL FINANCIERO ============ -->
@@ -422,6 +453,7 @@
     <nav class="subtabs" id="subtabs" hidden aria-label="Secciones de Plata">
       <button class="subtab" data-sub="gastos">💸 Gastos</button>
       <button class="subtab" data-sub="cuotas">💳 Cuotas</button>
+      <button class="subtab" data-sub="ahorro">🎯 Ahorro</button>
       <button class="subtab" data-sub="panel">📊 Panel</button>
     </nav>
 
