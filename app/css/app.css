@@ -3218,3 +3218,10 @@ body[data-theme="dark"] .fin-pleg-sum { color: #fff; }
 }
 .gasto-per--pago { opacity: .72; }
 .gasto-per--pago small { color: var(--fin-ok); font-weight: 700; }
+
+/* Import: fila que puede ser un duplicado con la descripción editada. */
+.imp-fila--dudosa { background: color-mix(in srgb, var(--fin-mal) 8%, transparent); border-radius: 8px; }
+.imp-dudosa {
+  display: block; font-size: .66rem; font-style: normal;
+  color: var(--fin-mal); font-weight: 600; line-height: 1.35; margin-top: 2px;
+}

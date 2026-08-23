@@ -321,6 +321,7 @@ function pintarPreview() {
   if (!impLeidos.length) { cont.innerHTML = ''; return; }
 
   const nuevos = impLeidos.filter((m) => m.tipo === 'gasto' && !m.duplicado);
+  const dudosos = nuevos.filter((m) => m.sospechoso);
   const repes = impLeidos.filter((m) => m.tipo === 'gasto' && m.duplicado);
   const cuotas = impLeidos.filter((m) => m.tipo === 'cuota');
   const ajustes = impLeidos.filter((m) => m.tipo === 'ajuste');
@@ -329,16 +330,18 @@ function pintarPreview() {
     <div class="imp-resumen">
       <b>${nuevos.length}</b> para cargar
       ${repes.length ? ` · <span class="fin-soft">${repes.length} ya estaban</span>` : ''}
+      ${dudosos.length ? ` · <span class="fin-mal">${dudosos.length} a revisar</span>` : ''}
       ${cuotas.length ? ` · <span class="fin-soft">${cuotas.length} en cuotas</span>` : ''}
       ${ajustes.length ? ` · <span class="fin-soft">${ajustes.length} ajustes</span>` : ''}
     </div>
     ${nuevos.length ? `
       <div class="imp-lista">
-        ${nuevos.map((m, i) => `
-          <label class="imp-fila">
+        ${nuevos.map((m) => `
+          <label class="imp-fila ${m.sospechoso ? 'imp-fila--dudosa' : ''}">
             <input type="checkbox" data-i="${impLeidos.indexOf(m)}" ${m.excluir ? '' : 'checked'}>
             <span class="imp-cat">${EMOJI_CAT[m.categoria] || '📦'}</span>
-            <span class="imp-desc">${escaparTxt(m.descripcion)}<small>${m.fecha.slice(8)}/${m.fecha.slice(5, 7)}</small></span>
+            <span class="imp-desc">${escaparTxt(m.descripcion)}<small>${m.fecha.slice(8)}/${m.fecha.slice(5, 7)}</small>
+              ${m.sospechoso ? `<em class="imp-dudosa">ya hay uno igual ese día: “${escaparTxt(m.parecidoA)}”. ¿Es otro consumo?</em>` : ''}</span>
             <span class="imp-monto">${fmt(m.monto, m.moneda)}</span>
           </label>`).join('')}
       </div>
@@ -360,7 +363,8 @@ const escaparTxt = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '
 function leerImport() {
   const texto = $('#imp-texto').value;
   const { movimientos, descartados, tarjeta } = parsearResumen(texto);
-  impLeidos = marcarDuplicados(movimientos, getGastos());
+  impLeidos = marcarDuplicados(movimientos, getGastos())
+    .map((m) => (m.sospechoso ? { ...m, excluir: true } : m));
   const est = $('#imp-estado');
   est.textContent = movimientos.length
     ? `${movimientos.length} movimientos · ${tarjeta ? 'tarjeta ' + tarjeta : 'sin tarjeta detectada'}`

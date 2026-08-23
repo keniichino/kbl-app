@@ -162,16 +162,52 @@ export const EMOJI_CAT = {
 };
 
 export function marcarDuplicados(movimientos, gastosExistentes) {
-  const clave = (g) => [g.fecha, Number(g.monto).toFixed(2), norm(g.descripcion), g.tarjeta || ''].join('|');
-  const yaEstan = new Set(gastosExistentes.map(clave));
-  // Dentro del mismo pegado puede venir dos veces el mismo consumo (pasa
-  // cuando copiás "Movimientos" y "Actividad" juntos): el segundo también
-  // se marca, si no el import duplicaría contra sí mismo.
-  const vistos = new Set();
+  const exacta = (g) => [g.fecha, Number(g.monto).toFixed(2), norm(g.descripcion), g.tarjeta || ''].join('|');
+  // Clave SIN descripción. Existe porque la descripción se edita: un gasto
+  // guardado como "Facultad (MERPAGO*BURGUESAILEN) - incluye $33.348 de
+  // recargo" no matchea con el "MERPAGO*BURGUESAILEN" que trae el resumen, y
+  // se cargaría de nuevo. Mismo día + mismo importe + misma tarjeta es
+  // sospechoso aunque el texto difiera.
+  const laxa = (g) => [g.fecha, Number(g.monto).toFixed(2), g.tarjeta || ''].join('|');
+
+  // Se cuenta CUÁNTOS hay de cada uno, no si existe. Dos consumos idénticos el
+  // mismo día son posibles (dos viajes del mismo precio): si el resumen trae
+  // dos y en la base hay uno, el segundo no es un duplicado — es uno que falta.
+  const cuentaExacta = new Map();
+  const textosLaxa = new Map();
+  for (const g of gastosExistentes) {
+    const ke = exacta(g);
+    cuentaExacta.set(ke, (cuentaExacta.get(ke) || 0) + 1);
+    const kl = laxa(g);
+    if (!textosLaxa.has(kl)) textosLaxa.set(kl, []);
+    textosLaxa.get(kl).push(g.descripcion || '');
+  }
+
+  const consumidosExacta = new Map();
+  const consumidosLaxa = new Map();
+
   return movimientos.map((mv) => {
-    const k = clave(mv);
-    const dup = yaEstan.has(k) || vistos.has(k);
-    vistos.add(k);
-    return { ...mv, duplicado: dup };
+    const ke = exacta(mv), kl = laxa(mv);
+    const usadosE = consumidosExacta.get(ke) || 0;
+
+    // Coincidencia palabra por palabra: ya está cargado, no se toca.
+    if (usadosE < (cuentaExacta.get(ke) || 0)) {
+      consumidosExacta.set(ke, usadosE + 1);
+      consumidosLaxa.set(kl, (consumidosLaxa.get(kl) || 0) + 1);
+      return { ...mv, duplicado: true, sospechoso: false };
+    }
+
+    // Mismo día, mismo importe, misma tarjeta, pero OTRO texto. Puede ser el
+    // mismo gasto con la descripción editada a mano, o un segundo consumo real.
+    // No se decide solo: se marca y lo resuelve quien está mirando.
+    const textos = textosLaxa.get(kl) || [];
+    const usadosL = consumidosLaxa.get(kl) || 0;
+    if (usadosL < textos.length) {
+      consumidosLaxa.set(kl, usadosL + 1);
+      return { ...mv, duplicado: false, sospechoso: true, parecidoA: textos[usadosL] };
+    }
+
+    consumidosLaxa.set(kl, usadosL + 1);
+    return { ...mv, duplicado: false, sospechoso: false };
   });
 }
