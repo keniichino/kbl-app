@@ -3201,3 +3201,20 @@ body[data-theme="dark"] .fin-pleg-sum { color: #fff; }
   font-size: .8rem; line-height: 1.5; color: var(--ink-soft);
 }
 .gasto-aviso b { color: var(--ink); font-weight: 800; }
+
+/* Reparto del mes entre resúmenes (la tarjeta cierra el 5). */
+.gasto-periodos {
+  display: flex; flex-wrap: wrap; gap: 8px; justify-content: center;
+  margin: 8px 0 2px;
+}
+.gasto-per {
+  background: var(--fin-surf); border: 1px solid var(--fin-borde);
+  border-radius: 10px; padding: 5px 10px;
+  font-size: .78rem; font-weight: 800; color: var(--ink);
+  display: flex; flex-direction: column; align-items: center; line-height: 1.25;
+}
+.gasto-per small {
+  font-size: .62rem; font-weight: 600; color: var(--ink-soft); text-transform: none;
+}
+.gasto-per--pago { opacity: .72; }
+.gasto-per--pago small { color: var(--fin-ok); font-weight: 700; }

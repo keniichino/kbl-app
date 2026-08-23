@@ -1,5 +1,5 @@
 // ====== Módulo Gastos — carga en 5 segundos ======
-import { getGastos, addGasto, removeGasto, updateGasto } from './store.js';
+import { getGastos, addGasto, removeGasto, updateGasto, getPagosResumen } from './store.js';
 import { confirmar, pedirTexto } from './dialog.js';
 import { equivalente, casaActual, siguienteCasa, onCotizacion } from './cotizacion.js';
 import { clasificar } from './catalogo.js';
@@ -7,6 +7,7 @@ import { mediosCredito } from './medios-credito.js';
 import { reconocerTicket } from './ticket-ocr.js';
 import { parsearTicket } from './ticket-parser.js';
 import { parsearResumen, marcarDuplicados, EMOJI_CAT } from './import-resumen.js';
+import { periodoDeGasto, labelMes } from './fincore.js';
 
 // `educacion` e `impuestos` salieron de mirar los datos reales, no de una
 // lista teórica: la facultad ($828.348 entre UADE y la cuota de agosto) estaba
@@ -26,6 +27,10 @@ export const CATEGORIAS = [
   { key: 'otros',      emoji: '📦', label: 'Otros' },
 ];
 
+// Sin centavos, para los chips de resumen: son montos de seis cifras.
+const fmtARS0 = new Intl.NumberFormat('es-AR', {
+  style: 'currency', currency: 'ARS', minimumFractionDigits: 0, maximumFractionDigits: 0,
+});
 const fmtARS = new Intl.NumberFormat('es-AR', {
   style: 'currency', currency: 'ARS', minimumFractionDigits: 0, maximumFractionDigits: 2,
 });
@@ -69,10 +74,10 @@ function etiquetaDia(fechaIso) {
 }
 
 /**
- * El aviso de "hace días que no cargás".
+ * El aviso de que hay un resumen sin importar.
  *
  * No es una racha ni un premio: es la única forma honesta de invitar a volver
- * a una app de gastos. Si hace una semana que no cargás nada, los números que
+ * a una app de gastos. Si el resumen cerró y no cargaste nada, los números que
  * te muestra la app son mentira, y decírtelo es más útil que felicitarte.
  *
  * Se mide por `ts` (cuándo lo cargaste), no por `fecha` (cuándo lo gastaste):
@@ -118,6 +123,46 @@ function avisoDeCarga(gastos) {
     y todavía no cargaste nada. Pegalo en <b>Importar resumen</b> y se pone al día solo.`;
 }
 
+/**
+ * A qué resumen cae cada gasto del mes.
+ *
+ * Esta pantalla agrupa por mes CALENDARIO ("cuánto gasté en agosto"), pero la
+ * tarjeta cierra el día 5: lo del 1 al 5 se paga en el resumen de este mes y
+ * lo del 6 en adelante recién en el próximo. Sin decirlo, el total grande se
+ * confunde con "lo que voy a pagar" — y encima da parecido, que es lo peor
+ * que puede pasar: en agosto/2026 el total del mes daba $1.616.386 y el
+ * resumen a pagar $1.607.036. Dos números casi iguales que significan cosas
+ * distintas hacen dudar de toda la pantalla.
+ */
+function pintarDesglosePeriodo(propios) {
+  const el = $('#gasto-periodos');
+  if (!el) return;
+  const medios = mediosCredito();
+  const pagos = getPagosResumen();
+
+  const porPeriodo = new Map();
+  for (const g of propios) {
+    if (g.moneda === 'USD') continue;              // los dólares van en su línea
+    const medio = medios.find((m) => m.key === g.tarjeta);
+    if (!medio || medio.diaCierre == null) continue; // caja: se paga al toque
+    const per = periodoDeGasto(g.fecha, medio);
+    porPeriodo.set(per, (porPeriodo.get(per) || 0) + g.monto);
+  }
+
+  // Con un solo período no hay nada que aclarar: el total ya se entiende.
+  if (porPeriodo.size < 2) { el.hidden = true; return; }
+
+  const filas = [...porPeriodo.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+  el.hidden = false;
+  el.innerHTML = filas.map(([per, monto]) => {
+    const pagado = pagos.some((p) => p.periodo === per);
+    return `<span class="gasto-per ${pagado ? 'gasto-per--pago' : ''}">
+      ${fmtARS0.format(monto)}
+      <small>${pagado ? 'ya pagado · ' : ''}resumen de ${labelMes(per, { corto: true })}</small>
+    </span>`;
+  }).join('');
+}
+
 function render() {
   const gastos = getGastos();
   avisoDeCarga(gastos);
@@ -142,6 +187,7 @@ function render() {
   elUsd.innerHTML = '+ ' + fmtUSD.format(totalUsd)
     + (eq ? ` <span class="cotiz-eq" role="button" tabindex="0" title="Tocá para cambiar de cotización">${eq} <span class="cotiz-casa">${casaActual().label}</span></span>` : '');
   $('#gastos-mes-label').textContent = new Date().toLocaleDateString('es-AR', { month: 'long', year: 'numeric' });
+  pintarDesglosePeriodo(propios);
 
   // El desglose por categoría es sólo de pesos, por lo mismo.
   const porCat = {};
