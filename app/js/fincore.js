@@ -207,7 +207,10 @@ export function montoDeclarado(r, mes) {
 /** Monto efectivo del mes: si hay gastos cargados que matchean, mandan ellos. */
 export function montoEn(r, mes, ctx) {
   const reales = (ctx.gastosPorMes.get(mes) || []).filter(
-    (g) => ctx.match.get(g.id) === r.id && (g.moneda || 'ARS') === r.moneda
+    // `!g.reintegro`: si pagás DOS suscripciones iguales y una te la devuelven
+    // (dos cuentas de Claude, una de un amigo), sumar las dos declararía un
+    // gasto fijo del doble del real. Lo que te reintegran no es tu costo.
+    (g) => ctx.match.get(g.id) === r.id && !g.reintegro && (g.moneda || 'ARS') === r.moneda
   );
   if (reales.length) return reales.reduce((a, g) => a + g.monto, 0);
   return montoDeclarado(r, mes);
@@ -462,11 +465,15 @@ export function fotoDelMes(mes, ctx, base = 'caja') {
   // alerta de "día caro" y el ritmo del mes.
   const ajenoPend = cero(), ajenoCobrado = cero();
   for (const g of (ctx.gastosPorMes.get(mes) || [])) {
-    if (ctx.match.has(g.id)) continue;               // ya contado como concepto
+    // El reintegro se evalúa ANTES que el match, y el orden importa: al revés,
+    // un gasto que coincide con un concepto declarado (la segunda cuenta de
+    // Claude, que paga un amigo) salía por el `continue` del match y su
+    // reintegro no se miraba nunca. Marcarlo "te lo deben" no hacía nada.
     if (g.reintegro) {
       sumar(g.reintegro === 'cobrado' ? ajenoCobrado : ajenoPend, g.monto, g.moneda);
       continue;
     }
+    if (ctx.match.has(g.id)) continue;               // ya contado como concepto
     sumar(varConsumo, g.monto, g.moneda);
     if (!credito.has(g.tarjeta)) sumar(varCaja, g.monto, g.moneda);
   }
