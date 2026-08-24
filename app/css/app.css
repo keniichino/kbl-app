@@ -3225,3 +3225,12 @@ body[data-theme="dark"] .fin-pleg-sum { color: #fff; }
   display: block; font-size: .66rem; font-style: normal;
   color: var(--fin-mal); font-weight: 600; line-height: 1.35; margin-top: 2px;
 }
+
+/* Proyección: período ya saldado. Se muestra para poder comparar, pero
+   atenuado y etiquetado, para que no se lea como la próxima deuda. */
+.proy-row--pago { opacity: .55; }
+.proy-row--pago .proy-barra { background: var(--fin-ok); }
+.proy-tag {
+  font-size: .6rem; font-weight: 800; color: var(--fin-ok);
+  text-transform: uppercase; letter-spacing: .03em; margin-left: 4px;
+}

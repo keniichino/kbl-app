@@ -465,11 +465,27 @@ async function borrarObjetivo(id) {
   render();
 }
 
-/** Pone en el recurrente lo que la tarjeta cobra de verdad. */
+/**
+ * Pone en el recurrente lo que la tarjeta cobra de verdad.
+ *
+ * Si además CAMBIÓ LA MONEDA hay que tirar el historial: guarda montos sin
+ * moneda, así que un Netflix que pasó de $19.999 a US$13,34 dejaba "19999"
+ * en el historial y la proyección lo leía como US$19.999. Un solo concepto
+ * mal declarado envenenaba el total en dólares de todo el resumen.
+ *
+ * La historia en pesos no se pierde: sigue en `gastos`, que es la fuente real.
+ */
 function corregirSub(id, monto, moneda) {
   const r = getRecurrentes().find((x) => x.id === id);
   if (!r) return;
-  upsertRecurrente({ ...r, monto: Number(monto), moneda, updated: Date.now() });
+  const cambioMoneda = (r.moneda || 'ARS') !== moneda;
+  upsertRecurrente({
+    ...r,
+    monto: Number(monto),
+    moneda,
+    historial: cambioMoneda ? {} : r.historial,
+    updated: Date.now(),
+  });
   render();
 }
 

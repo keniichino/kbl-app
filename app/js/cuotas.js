@@ -375,8 +375,21 @@ function render() {
   const periodos = bases.length ? Array.from({ length: 7 }, (_, i) => addMes(bases[0], i)) : [];
   const totales = periodos.map((key) => ({ key, label: labelMes(key), ...totalRealDelPeriodo(key, tarjetas, ctx) }));
 
-  // Hero: total real del mes más próximo con algo por vencer
-  const primerMes = totales[0];
+  // Hero: el mes más próximo QUE TODAVÍA HAY QUE PAGAR.
+  //
+  // `periodoBaseDe` arranca en el último período cerrado, que a esta altura
+  // del mes ya suele estar pagado: la pantalla mostraba "agosto — próximo
+  // vencimiento" arriba y "✓ Pagado el 13 de agosto" unos centímetros más
+  // abajo, en las tres tarjetas a la vez. Ahora se saltean los períodos que
+  // no deben nada — los que tienen fila en `pagos` y los resueltos por el
+  // mecanismo viejo de avanzar `cuota_actual`, que es lo que ve `soloPendiente`.
+  const pagosReg = getPagosResumen();
+  const debeAlgo = (key) => tarjetas.some((t) => {
+    if (pagosReg.some((p) => p.tarjeta === t.key && p.periodo === key)) return false;
+    const pend = resumenPeriodo(t.key, key, ctx, { soloPendiente: true }).total;
+    return pend.ars > 0.005 || pend.usd > 0.005;
+  });
+  const primerMes = totales.find((t) => debeAlgo(t.key)) || totales.at(-1);
   $('#cuotas-total').textContent = primerMes ? fmtARS.format(primerMes.ars) : '$ 0';
   const heroUsd = $('#cuotas-total-usd');
   if (heroUsd) {
@@ -393,16 +406,23 @@ function render() {
   renderVencidas(cuotas);
   renderResumenes(cuotas, ctx);
 
-  // Proyección mensual: mismo total real, 7 meses para adelante
+  // Proyección mensual: mismo total real, 7 meses para adelante.
+  // Los períodos ya saldados se muestran igual (sirven para comparar contra
+  // los que vienen) pero marcados: si no, el primero de la lista parece la
+  // próxima deuda cuando en realidad ya lo pagaste.
   const proyHtml = totales.length
-    ? totales.map((m, i) => `
-        <div class="proy-row ${i === 0 ? 'proy-row--next' : ''}">
-          <div class="proy-mes">${m.label}</div>
+    ? totales.map((m) => {
+        const saldado = !debeAlgo(m.key);
+        const esProximo = m.key === primerMes?.key;
+        return `
+        <div class="proy-row ${esProximo ? 'proy-row--next' : ''} ${saldado ? 'proy-row--pago' : ''}">
+          <div class="proy-mes">${m.label}${saldado ? ' <span class="proy-tag">✓ pagado</span>' : ''}</div>
           <div class="proy-barra-wrap">
-            <div class="proy-barra" style="width:${Math.min(100, (m.ars / (totales[0]?.ars || 1)) * 100)}%"></div>
+            <div class="proy-barra" style="width:${Math.min(100, (m.ars / (primerMes?.ars || totales[0]?.ars || 1)) * 100)}%"></div>
           </div>
           <div class="proy-monto">${fmtARS.format(m.ars)}${m.usd ? ` <span class="monto-usd">+${fmtUSD.format(m.usd)}</span>` : ''}</div>
-        </div>`).join('')
+        </div>`;
+      }).join('')
     : '<p class="cuotas-empty-sub">Sin tarjetas activas.</p>';
   $('#cuotas-proyeccion').innerHTML = proyHtml;
 
